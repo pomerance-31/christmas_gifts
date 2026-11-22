@@ -29,8 +29,6 @@ supabase/functions/parse-gift/index.ts  Edge Function for Quick add
 README.md                               this file
 ```
 
-The Supabase URL and publishable key sit at the top of the script in `index.html`. The publishable key is safe to expose because the database rules do the protecting.
-
 ## Setup
 
 1. **Supabase project.** Create one, then run the SQL below in the SQL editor. Add a row to `families` for each family, then one row to `profiles` per person (family, name, email). Each person's email must match their login. Children or anyone who won't sign in get a profile with no email. Someone in two families gets one profile in each, with the same email.

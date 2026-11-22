@@ -277,6 +277,8 @@ const isShared = g => g.recipient_ids.length > 1;
 const forMe = g => g.recipient_ids.includes(me.id);
 const sharedOthers = () => gifts.filter(g => isShared(g) && !forMe(g));
 const byVotes = (a, b) => votes.filter(v => v.gift_id === b.id).length - votes.filter(v => v.gift_id === a.id).length;
+// most liked first, and anything already bought goes to the bottom
+const byOrder = (a, b) => (!!buyOf(a.id) - !!buyOf(b.id)) || byVotes(a, b);
 const forNames = g => g.recipient_ids.map(id => id === me.id ? 'you' : nameOf(id)).join(' + ');
 
 // who the add form is for (a set of profile ids)
@@ -717,7 +719,7 @@ function renderLists(){
   const people = profiles.filter(p => p.id !== me.id && (view === 'all' || p.id === view));
   let html = people.map(p => {
     // Everyone view: only ideas for this person alone (shared ones have their own card). One person's tab: all of theirs.
-    const base = visibleFor(p.id).filter(g => !forMe(g) && (view !== 'all' || !isShared(g))).sort(byVotes);
+    const base = visibleFor(p.id).filter(g => !forMe(g) && (view !== 'all' || !isShared(g))).sort(byOrder);
     const list = view === 'all' ? base : byPoster(byCat(base));
     const shown = view === 'all' && !expanded.has(p.id) ? list.slice(0, PREVIEW) : list;
     return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` +
@@ -725,7 +727,7 @@ function renderLists(){
       (view === 'all' ? moreBtn(p.id, list.length) : '') +
       '</div>';
   }).join('');
-  const sharedAll = sharedOthers().sort(byVotes);
+  const sharedAll = sharedOthers().sort(byOrder);
   const shared = view === 'shared' ? byPoster(byCat(sharedAll)) : sharedAll;
   if(view === 'shared' || (view === 'all' && shared.length)){
     html += `<div class="card person wide"><h3>👥 Shared gifts</h3>` +
