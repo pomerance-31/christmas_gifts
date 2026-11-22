@@ -2,3 +2,4 @@ setup.sql
 *.sql
 .env
 Claude outputs/
+.DS_Store
