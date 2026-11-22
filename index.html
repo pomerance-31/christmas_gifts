@@ -98,7 +98,7 @@ button:disabled{opacity:.6;cursor:default}
 .addtoggle:hover{background:transparent}
 #addbody{margin-top:12px}
 .people.single{grid-template-columns:1fr}
-.edit input,.edit textarea,.edit select{margin-bottom:6px}
+.edit input,.edit textarea{margin-bottom:6px}
 .editbtns button{padding:6px 14px}
 .editbtns button.ghost{color:var(--dark);border-color:#cdb98a}
 @media(max-width:560px){.grid2{grid-template-columns:1fr}}
@@ -393,10 +393,7 @@ $('form').onsubmit = async e => {
 let editing = null; // id of the idea being edited
 
 function editHTML(g){
-  const opts = profiles.map(p => `<option value="${p.id}" ${p.id === g.recipient_id ? 'selected' : ''}>${p.id === me.id ? 'Myself' : esc(p.name)}</option>`).join('');
   return `<div class="gift"><span>✏️</span><div class="grow edit">
-    <label>Who is it for?</label>
-    <select data-e="recipient">${opts}</select>
     <input data-e="name" maxlength="120" value="${esc(g.name)}" placeholder="Gift">
     <input data-e="link" type="url" value="${esc(g.link || '')}" placeholder="Link (optional)">
     <textarea data-e="notes" rows="2" maxlength="300" placeholder="Notes (optional)">${esc(g.notes || '')}</textarea>
@@ -531,7 +528,7 @@ $('app').addEventListener('click', async e => {
   if(!name){ alert('The gift needs a name.'); return; }
   if(link && !safeLink(link)){ alert('The link should start with http:// or https://'); return; }
   b.disabled = true;
-  const r = await sb.from('gifts').update({ recipient_id: val('recipient'), name, link: link || null, notes: val('notes') || null })
+  const r = await sb.from('gifts').update({ name, link: link || null, notes: val('notes') || null })
     .eq('id', Number(b.dataset.save)).select();
   if(r.error || !r.data || !r.data.length){
     alert(r.error ? r.error.message : 'Could not save that change.');
