@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Parsonnet Family Christmas</title>
+<title>Family Christmas</title>
 <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -67,6 +67,14 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 .gift .x{background:transparent;color:#999;padding:0 6px;font-size:1rem;align-self:flex-start}
 .gift .x:hover{background:transparent;color:var(--red)}
 .empty{opacity:.6;font-style:italic}
+button:disabled{opacity:.6;cursor:default}
+.quick{background:#fffbe9;border:2px dashed var(--gold);border-radius:12px;padding:12px}
+.quickrow{display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap}
+#fillmsg{font-size:.9rem;font-weight:700}
+.or{display:flex;align-items:center;gap:10px;margin:16px 0;font-weight:700;color:var(--green)}
+.or::before,.or::after{content:'';flex:1;height:8px;border-radius:4px;background:repeating-linear-gradient(45deg,var(--red) 0 10px,#fff 10px 20px)}
+@keyframes glow{0%{box-shadow:0 0 0 5px rgba(230,180,34,.95)}100%{box-shadow:0 0 0 0 rgba(230,180,34,0)}}
+.glow{animation:glow 2.2s ease-out}
 @media(max-width:560px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -77,7 +85,7 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 <div class="screen" id="loginScreen">
   <div class="card">
     <div class="tree">🎄</div>
-    <h1>Parsonnet Family Christmas</h1>
+    <h1>Family Christmas</h1>
     <div class="stripe"></div>
     <p>Helping keep track of gift ideas for the fam</p>
     <div class="row"><label for="email">Email</label><input id="email" type="email" autocomplete="username"></div>
@@ -114,6 +122,15 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 
   <div class="card">
     <h2 style="color:var(--red);margin-bottom:12px">🎁 Add a gift idea</h2>
+    <div class="quick">
+      <label for="quick">✨ Quick add: type it in your own words</label>
+      <textarea id="quick" rows="2" maxlength="500"></textarea>
+      <div class="quickrow">
+        <button type="button" id="fill">Fill it in ✨</button>
+        <span id="fillmsg" style="color:var(--green)">Say who it is for, and add a link if you have one.</span>
+      </div>
+    </div>
+    <div class="or">or fill it in yourself</div>
     <form id="form" class="grid2">
       <div><label for="for">Who is it for?</label><select id="for"></select></div>
       <div><label for="name">Gift</label><input id="name" required maxlength="120" placeholder="e.g., a Rolex"></div>
@@ -227,7 +244,9 @@ function enterApp(){
   $('hi').textContent = me.name;
   $('myicon').textContent = iconOf(me);
   $('for').innerHTML = profiles.map(p => `<option value="${p.id}">${p.id === me.id ? 'Myself' : esc(p.name)}</option>`).join('');
-  $('for').value = (profiles.find(p => p.id !== me.id) || me).id;
+  const other = profiles.find(p => p.id !== me.id) || me;
+  $('for').value = other.id;
+  $('quick').placeholder = 'e.g., a cozy wool scarf for ' + other.name + ', dark green, https://...';
   renderHint(); renderLists();
 }
 
@@ -282,6 +301,44 @@ function renderHint(){
 $('for').onchange = renderHint;
 $('name').oninput = renderHint;
 
+// Quick add: turn a casual note into the form fields
+const say = (t, bad) => { $('fillmsg').textContent = t; $('fillmsg').style.color = bad ? 'var(--red)' : 'var(--green)'; };
+const glow = el => { el.classList.remove('glow'); void el.offsetWidth; el.classList.add('glow'); };
+
+async function quickFill(){
+  const text = $('quick').value.trim();
+  if(!text){ say('Type your idea first.', true); return; }
+  $('fill').disabled = true;
+  say('Reading your note...');
+  try{
+    const { data, error } = await sb.functions.invoke('parse-gift', { body: { text } });
+    if(error || !data || data.error){
+      let m = (data && data.error) || null;
+      if(!m && error && error.context && error.context.json){
+        try{ m = (await error.context.json()).error; }catch(_){}
+      }
+      say(m || 'The helper is unavailable right now. You can fill it in below.', true);
+      return;
+    }
+    const person = profiles.find(p => p.name === data.recipient);
+    if(person){ $('for').value = person.id; glow($('for')); }
+    [['name', data.gift], ['link', data.link], ['notes', data.notes]].forEach(([id, v]) => {
+      $(id).value = v || '';
+      if(v) glow($(id));
+    });
+    renderHint();
+    let m = data.problem || 'Check the details below, then click Add idea.';
+    if(data.extra_ideas > 0) m += ` I also saw ${data.extra_ideas} more idea${data.extra_ideas > 1 ? 's' : ''}, so add this one first and then type the next.`;
+    say(m, !!data.problem);
+  }catch(e){
+    say('The helper is unavailable right now. You can fill it in below.', true);
+  }finally{
+    $('fill').disabled = false;
+  }
+}
+$('fill').onclick = quickFill;
+$('quick').onkeydown = e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); quickFill(); } };
+
 $('form').onsubmit = async e => {
   e.preventDefault();
   const r = await sb.from('gifts').insert({
@@ -293,6 +350,8 @@ $('form').onsubmit = async e => {
   });
   if(r.error){ alert(r.error.message); return; }
   $('name').value = $('link').value = $('notes').value = '';
+  $('quick').value = '';
+  say('');
   await refresh();
 };
 
