@@ -177,19 +177,24 @@ Deno.serve(async (req) => {
   const email = userData?.user?.email?.toLowerCase();
   if (userErr || !email) return json({ error: 'Please sign in again.' }, 401);
 
-  const { data: profiles } = await sb.from('profiles').select('name,email');
-  const me = (profiles ?? []).find((p) => p.email.toLowerCase() === email);
-  if (!me) return json({ error: 'That account is not on the family list.' }, 403);
-  const names: string[] = (profiles ?? []).map((p) => p.name);
-
-  // 2. Read and tidy the note
-  let body: { text?: unknown; mode?: unknown; ids?: unknown } = {};
+  // 2. Read the request, then work out which family the caller means
+  let body: { text?: unknown; mode?: unknown; ids?: unknown; family_id?: unknown } = {};
   try {
     body = await req.json();
   } catch {
     // falls through to the empty check below
   }
+
+  // Row level security only returns the caller's own families here
+  const { data: profiles } = await sb.from('profiles').select('name,email,family_id');
+  const mine = (profiles ?? []).filter((p) => p.email && p.email.toLowerCase() === email);
+  if (!mine.length) return json({ error: 'That account is not on a family list.' }, 403);
   if (body.mode === 'categorize') return await categorize(sb, body.ids);
+
+  const me = mine.find((p) => p.family_id === body.family_id) ?? (mine.length === 1 ? mine[0] : undefined);
+  if (!me) return json({ error: 'Pick a family first.' }, 400);
+  const names: string[] = (profiles ?? []).filter((p) => p.family_id === me.family_id).map((p) => p.name);
+
   const text = String(body.text ?? '').replace(/[<>]/g, ' ').trim().slice(0, MAX_TEXT);
   if (!text) return json({ error: 'Type your idea first.' }, 400);
 

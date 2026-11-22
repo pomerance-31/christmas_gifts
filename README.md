@@ -1,9 +1,10 @@
 # Family Christmas
 
-A small private site where a family shares Christmas gift ideas for each other. Everyone has their own login. You can see and add ideas for everyone else, but you never see what others posted for you, or whether anything was bought, so surprises stay safe.
+A small private site where families share Christmas gift ideas for each other. Everyone has their own login, and each family is its own separate space. You can see and add ideas for everyone else, but you never see what others posted for you, or whether anything was bought, so surprises stay safe.
 
 ## How it works
 
+- **Families:** the family name shows at the top of the screen for everyone in it. Someone who belongs to more than one family gets a menu there to switch, and only ever sees one family at a time. Families never see each other's people or ideas.
 - **My list** shows only the ideas you posted for yourself.
 - **Other people's lists** show every idea for that person. Each idea has a bought checkbox (only the buyer can untick it), a "Posted by" line, a 👍 button and a comment thread. Ideas sort by 👍 count.
 - **Shared ideas** can be for more than one person. They show on a Shared tab and on each recipient's tab with a "For A + B" line. Nobody they are for can see them.
@@ -32,7 +33,7 @@ The Supabase URL and publishable key sit at the top of the script in `index.html
 
 ## Setup
 
-1. **Supabase project.** Create one, then run the SQL below in the SQL editor. Add one row to `profiles` per family member (name, email). Each person's email must match their login.
+1. **Supabase project.** Create one, then run the SQL below in the SQL editor. Add a row to `families` for each family, then one row to `profiles` per person (family, name, email). Each person's email must match their login. Children or anyone who won't sign in get a profile with no email. Someone in two families gets one profile in each, with the same email.
 2. **Logins.** Turn off "Allow new users to sign up" under Authentication > Sign In / Providers. Create each user with "Create new user" and Auto Confirm and a temporary password, or send invites. On first sign in a person sets a new password and picks an icon.
 3. **Page config.** Put your project URL and publishable key in `index.html` (`SUPABASE_URL`, `SUPABASE_KEY`).
 4. **GitHub Pages.** Serve the `main` branch root.
@@ -45,27 +46,36 @@ Supabase's built-in email sender allows only about 2 emails an hour, so temporar
 
 ## Database
 
-A signed-in user is matched to a `profiles` row by lowercase email through `my_profile_id()`. Every table is closed to `anon`, then opened narrowly with grants plus row level security.
+A signed-in user is matched to their `profiles` rows (one per family) by lowercase email through `my_profile_ids()`. Every table is closed to `anon`, then opened narrowly with grants plus row level security.
 
 <details>
 <summary>Full SQL</summary>
 
 ```sql
+create table families (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique
+);
+
 create table profiles (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique,
-  email text not null unique,
-  icon text
+  family_id uuid not null references families(id),
+  name text not null,
+  email text,            -- null for children, who cannot sign in
+  icon text,
+  unique (family_id, name)
 );
+create unique index profiles_family_email_key on profiles (family_id, lower(email)) where email is not null;
 
 create table gifts (
   id bigint generated always as identity primary key,
+  family_id uuid not null references families(id),
   recipient_ids uuid[] not null check (cardinality(recipient_ids) between 1 and 12),
-  category text check (category is null or char_length(category) <= 40),
   posted_by uuid not null references profiles(id),
   name text not null,
   link text,
   notes text,
+  category text check (category is null or char_length(category) <= 40),
   created_at timestamptz not null default now()
 );
 
@@ -97,17 +107,37 @@ create table comment_likes (
   primary key (comment_id, liker_id)
 );
 
-create function my_profile_id() returns uuid
+-- A login can have one profile per family, so these return lists
+create function my_profile_ids() returns uuid[]
 language sql stable security definer set search_path = public as $$
-  select id from profiles where lower(email) = lower(auth.jwt() ->> 'email')
+  select coalesce(array_agg(id), '{}'::uuid[]) from profiles
+  where email is not null and lower(email) = lower(auth.jwt() ->> 'email')
 $$;
 
-revoke all on profiles, gifts, purchases, votes, comments, comment_likes from anon, authenticated;
-grant select on profiles to authenticated;
+create function my_family_ids() returns uuid[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(family_id), '{}'::uuid[]) from profiles
+  where email is not null and lower(email) = lower(auth.jwt() ->> 'email')
+$$;
+
+-- lets the categorize call fill in an empty category on an idea the caller can see
+create function set_gift_category(gid bigint, cat text) returns void
+language sql security definer set search_path = public as $$
+  update gifts set category = left(trim(cat), 40)
+  where id = gid and category is null
+    and family_id = any(my_family_ids())
+    and not (recipient_ids && my_profile_ids());
+$$;
+revoke all on function set_gift_category(bigint, text) from public, anon;
+grant execute on function set_gift_category(bigint, text) to authenticated;
+
+revoke all on families, profiles, gifts, purchases, votes, comments, comment_likes from anon, authenticated;
+grant select on families, profiles to authenticated;
 grant update (icon) on profiles to authenticated;
 grant select, insert, delete on gifts, purchases, votes, comments, comment_likes to authenticated;
 grant update (name, link, notes) on gifts to authenticated;
 
+alter table families enable row level security;
 alter table profiles enable row level security;
 alter table gifts enable row level security;
 alter table purchases enable row level security;
@@ -115,73 +145,69 @@ alter table votes enable row level security;
 alter table comments enable row level security;
 alter table comment_likes enable row level security;
 
--- lets the categorize call fill in an empty category on an idea the caller can see
-create function set_gift_category(gid bigint, cat text) returns void
-language sql security definer set search_path = public as $$
-  update gifts set category = left(trim(cat), 40)
-  where id = gid and category is null
-    and not (my_profile_id() = any(recipient_ids));
-$$;
-revoke all on function set_gift_category(bigint, text) from public, anon;
-grant execute on function set_gift_category(bigint, text) to authenticated;
-
--- profiles
-create policy "read profiles" on profiles for select to authenticated using (true);
+-- families and profiles: only your own families
+create policy "read own families" on families for select to authenticated
+  using (id = any(my_family_ids()));
+create policy "read profiles" on profiles for select to authenticated
+  using (family_id = any(my_family_ids()));
 create policy "update own profile" on profiles for update to authenticated
-  using (id = my_profile_id()) with check (id = my_profile_id());
+  using (id = any(my_profile_ids())) with check (id = any(my_profile_ids()));
 
--- gifts: hidden from the people they are for, unless you posted them
+-- gifts: your families only, and hidden from the people they are for unless you posted them
 create policy "see gifts" on gifts for select to authenticated
-  using (not (my_profile_id() = any(recipient_ids)) or posted_by = my_profile_id());
+  using (family_id = any(my_family_ids())
+    and (not (recipient_ids && my_profile_ids()) or posted_by = any(my_profile_ids())));
 create policy "post gifts" on gifts for insert to authenticated
   with check (
-    posted_by = my_profile_id()
-    and cardinality(recipient_ids) = (select count(*) from profiles where id = any(recipient_ids))
+    posted_by = any(my_profile_ids())
+    and family_id = (select p.family_id from profiles p where p.id = gifts.posted_by)
+    and (select count(*) from profiles p
+         where p.id = any(gifts.recipient_ids) and p.family_id = gifts.family_id) = cardinality(gifts.recipient_ids)
   );
 create policy "edit own gifts" on gifts for update to authenticated
-  using (posted_by = my_profile_id()) with check (posted_by = my_profile_id());
+  using (posted_by = any(my_profile_ids())) with check (posted_by = any(my_profile_ids()));
 create policy "remove own gifts" on gifts for delete to authenticated
-  using (posted_by = my_profile_id());
+  using (posted_by = any(my_profile_ids()));
 
--- purchases
+-- purchases, votes, comments, comment likes: readable only when you are not a recipient,
+-- and written only as your own profile in that gift's family
 create policy "see purchases" on purchases for select to authenticated
-  using (exists (select 1 from gifts g where g.id = gift_id and not (my_profile_id() = any(g.recipient_ids))));
+  using (exists (select 1 from gifts g where g.id = gift_id and not (g.recipient_ids && my_profile_ids())));
 create policy "mark bought" on purchases for insert to authenticated
-  with check (
-    buyer_id = my_profile_id()
-    and exists (select 1 from gifts g where g.id = gift_id and not (my_profile_id() = any(g.recipient_ids)))
-  );
+  with check (exists (select 1 from gifts g join profiles p on p.family_id = g.family_id
+    where g.id = gift_id and p.id = buyer_id and p.id = any(my_profile_ids())
+      and not (g.recipient_ids && my_profile_ids())));
 create policy "unmark own" on purchases for delete to authenticated
-  using (buyer_id = my_profile_id());
+  using (buyer_id = any(my_profile_ids()));
 
--- votes
 create policy "see votes" on votes for select to authenticated
-  using (exists (select 1 from gifts g where g.id = gift_id and not (my_profile_id() = any(g.recipient_ids))));
+  using (exists (select 1 from gifts g where g.id = gift_id and not (g.recipient_ids && my_profile_ids())));
 create policy "add vote" on votes for insert to authenticated
-  with check (voter_id = my_profile_id()
-    and exists (select 1 from gifts g where g.id = gift_id and not (my_profile_id() = any(g.recipient_ids))));
+  with check (exists (select 1 from gifts g join profiles p on p.family_id = g.family_id
+    where g.id = gift_id and p.id = voter_id and p.id = any(my_profile_ids())
+      and not (g.recipient_ids && my_profile_ids())));
 create policy "remove own vote" on votes for delete to authenticated
-  using (voter_id = my_profile_id());
+  using (voter_id = any(my_profile_ids()));
 
--- comments
 create policy "see comments" on comments for select to authenticated
-  using (exists (select 1 from gifts g where g.id = gift_id and not (my_profile_id() = any(g.recipient_ids))));
+  using (exists (select 1 from gifts g where g.id = gift_id and not (g.recipient_ids && my_profile_ids())));
 create policy "add comment" on comments for insert to authenticated
-  with check (author_id = my_profile_id()
-    and exists (select 1 from gifts g where g.id = gift_id and not (my_profile_id() = any(g.recipient_ids))));
+  with check (exists (select 1 from gifts g join profiles p on p.family_id = g.family_id
+    where g.id = gift_id and p.id = author_id and p.id = any(my_profile_ids())
+      and not (g.recipient_ids && my_profile_ids())));
 create policy "remove own comment" on comments for delete to authenticated
-  using (author_id = my_profile_id());
+  using (author_id = any(my_profile_ids()));
 
--- comment likes
 create policy "see comment likes" on comment_likes for select to authenticated
   using (exists (select 1 from comments c join gifts g on g.id = c.gift_id
-    where c.id = comment_id and not (my_profile_id() = any(g.recipient_ids))));
+    where c.id = comment_id and not (g.recipient_ids && my_profile_ids())));
 create policy "add comment like" on comment_likes for insert to authenticated
-  with check (liker_id = my_profile_id()
-    and exists (select 1 from comments c join gifts g on g.id = c.gift_id
-      where c.id = comment_id and not (my_profile_id() = any(g.recipient_ids))));
+  with check (exists (select 1 from comments c join gifts g on g.id = c.gift_id
+    join profiles p on p.family_id = g.family_id
+    where c.id = comment_id and p.id = liker_id and p.id = any(my_profile_ids())
+      and not (g.recipient_ids && my_profile_ids())));
 create policy "remove own comment like" on comment_likes for delete to authenticated
-  using (liker_id = my_profile_id());
+  using (liker_id = any(my_profile_ids()));
 ```
 
 </details>
@@ -189,7 +215,7 @@ create policy "remove own comment like" on comment_likes for delete to authentic
 ## Quick add (`parse-gift`)
 
 1. Checks the caller is signed in, using the key from the request's `apikey` header.
-2. Reads `profiles` with the caller's token, so the family names and the current user come from the server and the page can't change them. A caller whose email isn't in `profiles` is refused.
+2. Reads `profiles` with the caller's token, so the family names and the current user come from the server and the page can't change them. The page says which family it means, and the caller must have a profile in it; a caller with no profile is refused.
 3. Caps the note at 1000 characters and strips `<` and `>`.
 4. Calls the Anthropic Messages API with a forced tool call, `fill_gift_form`, and an enum of the family names for the recipients.
 5. Checks the result before returning it. Recipients must be family names, a link is kept only if it appears in the note, em dashes are replaced and lengths are capped.
