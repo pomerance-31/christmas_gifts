@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Family Christmas</title>
-<link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--red:#b3202a;--green:#1f6b3a;--cream:#fff8ec;--gold:#e6b422;--dark:#12382a}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;font-family:'Nunito',system-ui,sans-serif;color:var(--dark);
   background:linear-gradient(#0f3d2b,#165a3c 60%,#0f3d2b);background-attachment:fixed}
-h1,h2,h3{font-family:'Mountains of Christmas',Georgia,serif;margin:0}
+h1,h2,h3{font-family:'Lobster',Georgia,serif;font-weight:400;margin:0}
 .snow{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
 .flake{position:absolute;top:-20px;color:#fff;opacity:.8;animation:fall linear infinite}
 @keyframes fall{to{transform:translateY(110vh) translateX(40px)}}
@@ -105,7 +105,8 @@ button:disabled{opacity:.6;cursor:default}
 .tab:hover{background:#fff3d6}
 .tab.on{background:var(--red);color:#fff;border-color:#fff}
 .tab small{opacity:.7;font-weight:700;margin-left:2px}
-.addtoggle{width:100%;text-align:left;background:transparent;color:var(--red);font-family:'Mountains of Christmas',Georgia,serif;font-size:1.5rem;padding:0}
+.addcard{margin-bottom:16px}
+.addtoggle{width:100%;text-align:left;background:transparent;color:var(--red);font-family:'Lobster',Georgia,serif;font-weight:400;font-size:1.5rem;padding:0}
 .addtoggle:hover{background:transparent}
 #addbody{margin-top:12px}
 .people.single{grid-template-columns:1fr}
@@ -113,7 +114,7 @@ button:disabled{opacity:.6;cursor:default}
 .cols.withcats{display:grid;grid-template-columns:210px minmax(0,1fr);gap:16px;align-items:start}
 .cats{padding:14px}
 .cats:empty{display:none}
-.catshead{font-family:'Mountains of Christmas',Georgia,serif;font-size:1.3rem;color:var(--green)}
+.catshead{font-family:'Lobster',Georgia,serif;font-weight:400;font-size:1.3rem;color:var(--green)}
 .catsub{font-size:.75rem;color:#7a6a45;margin-bottom:8px}
 .catlist{display:flex;flex-direction:column;gap:4px}
 .catbtn{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;background:transparent;color:var(--dark);border:1px solid transparent;border-radius:8px;padding:4px 8px;font-size:.9rem;font-weight:600}
@@ -178,7 +179,7 @@ button:disabled{opacity:.6;cursor:default}
 
   <div class="tabs" id="tabs"></div>
 
-  <div class="card">
+  <div class="card addcard">
     <button type="button" class="addtoggle" id="toggleAdd" aria-expanded="false">🎁 Add a gift idea ▸</button>
     <div id="addbody" class="hidden">
     <div class="quick">
