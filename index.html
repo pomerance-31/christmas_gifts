@@ -111,6 +111,12 @@ button:disabled{opacity:.6;cursor:default}
 #addbody{margin-top:12px}
 .people.single{grid-template-columns:1fr}
 .people .wide{grid-column:1/-1}
+.more{background:transparent;color:var(--red);border:0;padding:8px 0 0;font-size:.9rem;font-weight:700;text-decoration:underline}
+.more:hover{background:transparent;color:#d02a36}
+/* narrow cards on the Everyone view: the bought control goes under the name, left aligned */
+.people:not(.single) .person:not(.wide) .toprow{flex-direction:column;gap:4px}
+.people:not(.single) .person:not(.wide) .toprow .name{flex:none}
+.people:not(.single) .person:not(.wide) .buy{margin-left:0}
 .famrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .famname,.famrow select{font-family:'Lobster',Georgia,serif;font-weight:400;font-size:1.5rem;color:var(--gold)}
 .famrow select{width:auto;max-width:100%;appearance:none;-webkit-appearance:none;cursor:pointer;line-height:1.3;
@@ -672,6 +678,19 @@ async function ensureCategories(scope){
 let postedBy = 'all';
 const byPoster = list => postedBy === 'all' ? list : list.filter(g => g.posted_by === postedBy);
 
+// Everyone view: each card shows a few ideas, with a button to see the rest
+const PREVIEW = 3;
+const expanded = new Set();
+const moreBtn = (key, total) => total <= PREVIEW ? ''
+  : `<button type="button" class="more" data-more="${key}">${expanded.has(key) ? 'Show less' : `Show ${total - PREVIEW} more`}</button>`;
+$('others').addEventListener('click', e => {
+  const b = e.target.closest('button[data-more]');
+  if(!b) return;
+  const k = b.dataset.more;
+  if(expanded.has(k)) expanded.delete(k); else expanded.add(k);
+  renderLists();
+});
+
 function renderLists(){
   renderTabs();
   const showMine = view === 'all' || view === me.id;
@@ -700,15 +719,18 @@ function renderLists(){
     // Everyone view: only ideas for this person alone (shared ones have their own card). One person's tab: all of theirs.
     const base = visibleFor(p.id).filter(g => !forMe(g) && (view !== 'all' || !isShared(g))).sort(byVotes);
     const list = view === 'all' ? base : byPoster(byCat(base));
+    const shown = view === 'all' && !expanded.has(p.id) ? list.slice(0, PREVIEW) : list;
     return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` +
-      (list.length ? list.map(g => giftHTML(g, true)).join('') : '<span class="empty">No ideas yet. Add one!</span>') +
+      (list.length ? shown.map(g => giftHTML(g, true)).join('') : '<span class="empty">No ideas yet. Add one!</span>') +
+      (view === 'all' ? moreBtn(p.id, list.length) : '') +
       '</div>';
   }).join('');
   const sharedAll = sharedOthers().sort(byVotes);
   const shared = view === 'shared' ? byPoster(byCat(sharedAll)) : sharedAll;
   if(view === 'shared' || (view === 'all' && shared.length)){
     html += `<div class="card person wide"><h3>👥 Shared gifts</h3>` +
-      (shared.length ? shared.map(g => giftHTML(g, true)).join('') : '<span class="empty">No shared ideas yet. Tick two or more names when you add one.</span>') +
+      (shared.length ? (view === 'all' && !expanded.has('shared') ? shared.slice(0, PREVIEW) : shared).map(g => giftHTML(g, true)).join('') : '<span class="empty">No shared ideas yet. Tick two or more names when you add one.</span>') +
+      (view === 'all' ? moreBtn('shared', shared.length) : '') +
       '</div>';
   }
   $('others').innerHTML = html;
