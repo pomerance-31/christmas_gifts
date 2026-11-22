@@ -88,15 +88,17 @@ button:disabled{opacity:.6;cursor:default}
 .or::before,.or::after{content:'';flex:1;height:8px;border-radius:4px;background:repeating-linear-gradient(45deg,var(--red) 0 10px,#fff 10px 20px)}
 @keyframes glow{0%{box-shadow:0 0 0 5px rgba(230,180,34,.95)}100%{box-shadow:0 0 0 0 rgba(230,180,34,0)}}
 .glow{animation:glow 2.2s ease-out}
-.social{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
-.chip{background:#fff;color:var(--dark);border:2px solid #e6d9b8;border-radius:999px;padding:2px 10px;font-size:.82rem;font-weight:700}
-.chip:hover{background:#fff3d6}
-.chip.on{background:#ffe9e9;border-color:var(--red);color:var(--red)}
-.thread{margin-top:8px;padding:8px;background:#fffbe9;border-radius:10px;border:1px solid #e6d9b8}
+.metarow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:3px 0}
+.metarow .posted{margin:0}
+.acts{display:flex;gap:4px;margin-left:auto}
+.act,.lk{background:transparent;color:#7a6a45;border:0;border-radius:8px;padding:2px 8px;font-size:.88rem;font-weight:600}
+.act:hover,.lk:hover{background:#f3ead2}
+.act.on,.lk.on{color:var(--red);font-weight:700}
+.lk{padding:0 6px;font-size:.8rem}
+.thread{margin-top:6px;padding:2px 0 2px 10px;border-left:3px solid #e6d9b8}
 .cm{font-size:.88rem;padding:3px 0}
 .cm .when{font-size:.75rem;opacity:.6;margin-left:4px}
 .cx{background:transparent;color:#999;padding:0 4px;font-size:.85rem}
-.chip.mini{padding:0 8px;font-size:.75rem;margin-left:6px}
 .cx:hover{background:transparent;color:var(--red)}
 .cmform{display:flex;gap:6px;margin-top:6px}
 .cmform input{padding:6px 8px;font-size:.88rem;flex:1;min-width:0}
@@ -458,11 +460,11 @@ function giftHTML(g, shopping){
     ${shopping ? '' : '<span>🎁</span>'}
     <div class="grow">
       <div class="toprow"><div class="name">${esc(g.name)}</div>${shopping ? buyHTML(g, b, locked) : ''}</div>
-      ${shopping ? postedHTML(g) : ''}
+      ${shopping ? `<div class="metarow">${postedHTML(g)}${actionsHTML(g)}</div>` : ''}
       ${isShared(g) ? `<div class="forline">👥 For ${esc(forNames(g))}</div>` : ''}
       ${safeLink(g.link) ? `<a href="${esc(g.link)}" target="_blank" rel="noopener">View link</a>` : ''}
       ${g.notes ? `<div class="notes">${esc(g.notes)}</div>` : ''}
-      ${shopping ? socialHTML(g) : ''}
+      ${shopping ? threadHTML(g) : ''}
     </div>
     ${g.posted_by === me.id ? `<button class="x" data-edit="${g.id}" title="Edit this idea">✎</button><button class="x" data-del="${g.id}" title="Remove this idea">✕</button>` : ''}
   </div>`;
@@ -474,24 +476,28 @@ function likeChip(c){
   const ls = commentLikes.filter(l => l.comment_id === c.id);
   const on = ls.some(l => l.liker_id === me.id);
   const who = ls.map(l => l.liker_id === me.id ? 'You' : nameOf(l.liker_id)).join(', ');
-  return `<button type="button" class="chip mini ${on ? 'on' : ''}" data-likec="${c.id}" title="${esc(who) || 'Like this comment'}">👍${ls.length ? ' ' + ls.length : ''}</button>`;
+  return `<button type="button" class="lk ${on ? 'on' : ''}" data-likec="${c.id}" title="${esc(who) || 'Like this comment'}">👍${ls.length ? ' ' + ls.length : ''}</button>`;
 }
 
-function socialHTML(g){
+// the 👍 and 💬 buttons, shown on the same row as "Posted by"
+function actionsHTML(g){
   const vs = votes.filter(v => v.gift_id === g.id);
   const mineV = vs.some(v => v.voter_id === me.id);
-  const cs = comments.filter(c => c.gift_id === g.id);
+  const n = comments.filter(c => c.gift_id === g.id).length;
   const who = vs.map(v => v.voter_id === me.id ? 'You' : nameOf(v.voter_id)).join(', ');
-  let h = `<div class="social">
-    <button type="button" class="chip ${mineV ? 'on' : ''}" data-vote="${g.id}" title="${esc(who) || 'Be the first to like this'}">👍 ${vs.length || ''}</button>
-    <button type="button" class="chip" data-thread="${g.id}">💬 ${cs.length || 'Comment'}</button>
+  return `<div class="acts">
+    <button type="button" class="act ${mineV ? 'on' : ''}" data-vote="${g.id}" title="${esc(who) || 'Be the first to like this'}">👍 ${vs.length || 'Like'}</button>
+    <button type="button" class="act" data-thread="${g.id}">💬 ${n ? n + (n === 1 ? ' comment' : ' comments') : 'Comment'}</button>
   </div>`;
-  if(openThreads.has(g.id)){
-    h += `<div class="thread">` +
-      cs.map(c => `<div class="cm"><b>${c.author_id === me.id ? 'You' : esc(nameOf(c.author_id))}</b> ${esc(c.body)}<span class="when">${fmt(c.created_at)}</span> ${likeChip(c)}${c.author_id === me.id ? ` <button type="button" class="cx" data-delc="${c.id}" title="Delete comment">✕</button>` : ''}</div>`).join('') +
-      `<div class="cmform"><input data-draft="${g.id}" maxlength="500" placeholder="Add a comment" value="${esc(drafts[g.id] || '')}"><button type="button" data-post="${g.id}">Post</button></div></div>`;
-  }
-  return h;
+}
+
+// the comment thread, shown under the idea when opened
+function threadHTML(g){
+  if(!openThreads.has(g.id)) return '';
+  const cs = comments.filter(c => c.gift_id === g.id);
+  return `<div class="thread">` +
+    cs.map(c => `<div class="cm"><b>${c.author_id === me.id ? 'You' : esc(nameOf(c.author_id))}:</b> ${esc(c.body)}<span class="when">${fmt(c.created_at)}</span> ${likeChip(c)}${c.author_id === me.id ? ` <button type="button" class="cx" data-delc="${c.id}" title="Delete comment">✕</button>` : ''}</div>`).join('') +
+    `<div class="cmform"><input data-draft="${g.id}" maxlength="500" placeholder="Add a comment" value="${esc(drafts[g.id] || '')}"><button type="button" data-post="${g.id}">Post</button></div></div>`;
 }
 
 async function refreshSocial(){
