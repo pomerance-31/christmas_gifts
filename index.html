@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Parsonnet Family Christmas</title>
+<title>Family Christmas</title>
 <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -64,9 +64,31 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 .gift a{color:var(--red);font-size:.9rem}
 .gift .notes{font-size:.88rem;opacity:.8}
 .gift .by{font-size:.8rem;color:var(--green);font-weight:700}
+.gift .posted{font-size:.8rem;color:#7a6a45;font-style:italic}
 .gift .x{background:transparent;color:#999;padding:0 6px;font-size:1rem;align-self:flex-start}
 .gift .x:hover{background:transparent;color:var(--red)}
 .empty{opacity:.6;font-style:italic}
+button:disabled{opacity:.6;cursor:default}
+.quick{background:#fffbe9;border:2px dashed var(--gold);border-radius:12px;padding:12px}
+.quickrow{display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap}
+#fillmsg{font-size:.9rem;font-weight:700}
+.or{display:flex;align-items:center;gap:10px;margin:16px 0;font-weight:700;color:var(--green)}
+.or::before,.or::after{content:'';flex:1;height:8px;border-radius:4px;background:repeating-linear-gradient(45deg,var(--red) 0 10px,#fff 10px 20px)}
+@keyframes glow{0%{box-shadow:0 0 0 5px rgba(230,180,34,.95)}100%{box-shadow:0 0 0 0 rgba(230,180,34,0)}}
+.glow{animation:glow 2.2s ease-out}
+.social{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.chip{background:#fff;color:var(--dark);border:2px solid #e6d9b8;border-radius:999px;padding:2px 10px;font-size:.82rem;font-weight:700}
+.chip:hover{background:#fff3d6}
+.chip.on{background:#ffe9e9;border-color:var(--red);color:var(--red)}
+.thread{margin-top:8px;padding:8px;background:#fffbe9;border-radius:10px;border:1px solid #e6d9b8}
+.cm{font-size:.88rem;padding:3px 0}
+.cm .when{font-size:.75rem;opacity:.6;margin-left:4px}
+.cx{background:transparent;color:#999;padding:0 4px;font-size:.85rem}
+.chip.mini{padding:0 8px;font-size:.75rem;margin-left:6px}
+.cx:hover{background:transparent;color:var(--red)}
+.cmform{display:flex;gap:6px;margin-top:6px}
+.cmform input{padding:6px 8px;font-size:.88rem}
+.cmform button{padding:6px 12px;font-size:.88rem}
 @media(max-width:560px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -77,7 +99,7 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 <div class="screen" id="loginScreen">
   <div class="card">
     <div class="tree">🎄</div>
-    <h1>Parsonnet Family Christmas</h1>
+    <h1>Family Christmas</h1>
     <div class="stripe"></div>
     <p>Helping keep track of gift ideas for the fam</p>
     <div class="row"><label for="email">Email</label><input id="email" type="email" autocomplete="username"></div>
@@ -114,6 +136,15 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 
   <div class="card">
     <h2 style="color:var(--red);margin-bottom:12px">🎁 Add a gift idea</h2>
+    <div class="quick">
+      <label for="quick">✨ Quick add: type it in your own words</label>
+      <textarea id="quick" rows="2" maxlength="500"></textarea>
+      <div class="quickrow">
+        <button type="button" id="fill">Fill it in ✨</button>
+        <span id="fillmsg" style="color:var(--green)">Say who it is for, and add a link if you have one.</span>
+      </div>
+    </div>
+    <div class="or">or fill it in yourself</div>
     <form id="form" class="grid2">
       <div><label for="for">Who is it for?</label><select id="for"></select></div>
       <div><label for="name">Gift</label><input id="name" required maxlength="120" placeholder="e.g., a Rolex"></div>
@@ -165,7 +196,8 @@ if(SUPABASE_URL.startsWith('PASTE')){
 }
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let me = null, profiles = [], gifts = [], buys = [], pick = ICONS[0];
+let me = null, profiles = [], gifts = [], buys = [], votes = [], comments = [], commentLikes = [], pick = ICONS[0];
+const openThreads = new Set(), drafts = {};
 let passwordPending = LINK_TYPE === 'recovery';
 
 const iconOf = p => p.icon || '🎁';
@@ -175,12 +207,16 @@ const visibleFor = pid => gifts.filter(g => g.recipient_id === pid);
 const safeLink = u => /^https?:\/\//i.test(u || '');
 
 async function loadData(){
-  const [p, g, b] = await Promise.all([
+  const [p, g, b, v, c, l] = await Promise.all([
     sb.from('profiles').select('*').order('name'),
     sb.from('gifts').select('*').order('created_at'),
-    sb.from('purchases').select('*')
+    sb.from('purchases').select('*'),
+    sb.from('votes').select('*'),
+    sb.from('comments').select('*').order('created_at'),
+    sb.from('comment_likes').select('*')
   ]);
   profiles = p.data || []; gifts = g.data || []; buys = b.data || [];
+  votes = v.data || []; comments = c.data || []; commentLikes = l.data || [];
 }
 async function refresh(){ await loadData(); renderHint(); renderLists(); }
 
@@ -227,7 +263,9 @@ function enterApp(){
   $('hi').textContent = me.name;
   $('myicon').textContent = iconOf(me);
   $('for').innerHTML = profiles.map(p => `<option value="${p.id}">${p.id === me.id ? 'Myself' : esc(p.name)}</option>`).join('');
-  $('for').value = (profiles.find(p => p.id !== me.id) || me).id;
+  const other = profiles.find(p => p.id !== me.id) || me;
+  $('for').value = other.id;
+  $('quick').placeholder = 'e.g., a cozy wool scarf for ' + other.name + ', dark green, https://...';
   renderHint(); renderLists();
 }
 
@@ -282,6 +320,44 @@ function renderHint(){
 $('for').onchange = renderHint;
 $('name').oninput = renderHint;
 
+// Quick add: turn a casual note into the form fields
+const say = (t, bad) => { $('fillmsg').textContent = t; $('fillmsg').style.color = bad ? 'var(--red)' : 'var(--green)'; };
+const glow = el => { el.classList.remove('glow'); void el.offsetWidth; el.classList.add('glow'); };
+
+async function quickFill(){
+  const text = $('quick').value.trim();
+  if(!text){ say('Type your idea first.', true); return; }
+  $('fill').disabled = true;
+  say('Reading your note...');
+  try{
+    const { data, error } = await sb.functions.invoke('parse-gift', { body: { text } });
+    if(error || !data || data.error){
+      let m = (data && data.error) || null;
+      if(!m && error && error.context && error.context.json){
+        try{ m = (await error.context.json()).error; }catch(_){}
+      }
+      say(m || 'The helper is unavailable right now. You can fill it in below.', true);
+      return;
+    }
+    const person = profiles.find(p => p.name === data.recipient);
+    if(person){ $('for').value = person.id; glow($('for')); }
+    [['name', data.gift], ['link', data.link], ['notes', data.notes]].forEach(([id, v]) => {
+      $(id).value = v || '';
+      if(v) glow($(id));
+    });
+    renderHint();
+    let m = data.problem || 'Check the details below, then click Add idea.';
+    if(data.extra_ideas > 0) m += ` I also saw ${data.extra_ideas} more idea${data.extra_ideas > 1 ? 's' : ''}, so add this one first and then type the next.`;
+    say(m, !!data.problem);
+  }catch(e){
+    say('The helper is unavailable right now. You can fill it in below.', true);
+  }finally{
+    $('fill').disabled = false;
+  }
+}
+$('fill').onclick = quickFill;
+$('quick').onkeydown = e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); quickFill(); } };
+
 $('form').onsubmit = async e => {
   e.preventDefault();
   const r = await sb.from('gifts').insert({
@@ -293,6 +369,8 @@ $('form').onsubmit = async e => {
   });
   if(r.error){ alert(r.error.message); return; }
   $('name').value = $('link').value = $('notes').value = '';
+  $('quick').value = '';
+  say('');
   await refresh();
 };
 
@@ -305,10 +383,48 @@ function giftHTML(g, shopping){
       <div class="name">${esc(g.name)}</div>
       ${safeLink(g.link) ? `<a href="${esc(g.link)}" target="_blank" rel="noopener">View link</a>` : ''}
       ${g.notes ? `<div class="notes">${esc(g.notes)}</div>` : ''}
+      ${shopping ? `<div class="posted">Posted by ${g.posted_by === me.id ? 'you' : esc(nameOf(g.posted_by))}</div>` : ''}
       ${b ? `<div class="by">Bought by ${b.buyer_id === me.id ? 'you' : esc(nameOf(b.buyer_id))}</div>` : ''}
+      ${shopping ? socialHTML(g) : ''}
     </div>
     ${g.posted_by === me.id ? `<button class="x" data-del="${g.id}" title="Remove this idea">✕</button>` : ''}
   </div>`;
+}
+
+const fmt = d => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+function likeChip(c){
+  const ls = commentLikes.filter(l => l.comment_id === c.id);
+  const on = ls.some(l => l.liker_id === me.id);
+  const who = ls.map(l => l.liker_id === me.id ? 'You' : nameOf(l.liker_id)).join(', ');
+  return `<button type="button" class="chip mini ${on ? 'on' : ''}" data-likec="${c.id}" title="${esc(who) || 'Like this comment'}">👍${ls.length ? ' ' + ls.length : ''}</button>`;
+}
+
+function socialHTML(g){
+  const vs = votes.filter(v => v.gift_id === g.id);
+  const mineV = vs.some(v => v.voter_id === me.id);
+  const cs = comments.filter(c => c.gift_id === g.id);
+  const who = vs.map(v => v.voter_id === me.id ? 'You' : nameOf(v.voter_id)).join(', ');
+  let h = `<div class="social">
+    <button type="button" class="chip ${mineV ? 'on' : ''}" data-vote="${g.id}" title="${esc(who) || 'Be the first to like this'}">👍 ${vs.length || ''}</button>
+    <button type="button" class="chip" data-thread="${g.id}">💬 ${cs.length || 'Comment'}</button>
+  </div>`;
+  if(openThreads.has(g.id)){
+    h += `<div class="thread">` +
+      cs.map(c => `<div class="cm"><b>${c.author_id === me.id ? 'You' : esc(nameOf(c.author_id))}</b> ${esc(c.body)}<span class="when">${fmt(c.created_at)}</span> ${likeChip(c)}${c.author_id === me.id ? ` <button type="button" class="cx" data-delc="${c.id}" title="Delete comment">✕</button>` : ''}</div>`).join('') +
+      `<div class="cmform"><input data-draft="${g.id}" maxlength="500" placeholder="Add a comment" value="${esc(drafts[g.id] || '')}"><button type="button" data-post="${g.id}">Post</button></div></div>`;
+  }
+  return h;
+}
+
+async function refreshSocial(){
+  const [v, c, l] = await Promise.all([
+    sb.from('votes').select('*'),
+    sb.from('comments').select('*').order('created_at'),
+    sb.from('comment_likes').select('*')
+  ]);
+  votes = v.data || []; comments = c.data || []; commentLikes = l.data || [];
+  renderLists();
 }
 
 function renderLists(){
@@ -317,7 +433,7 @@ function renderLists(){
     : '<span class="empty">You have not added any ideas for yourself yet.</span>';
 
   $('others').innerHTML = profiles.filter(p => p.id !== me.id).map(p => {
-    const list = visibleFor(p.id);
+    const list = visibleFor(p.id).sort((a, b) => votes.filter(v => v.gift_id === b.id).length - votes.filter(v => v.gift_id === a.id).length);
     return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` +
       (list.length ? list.map(g => giftHTML(g, true)).join('') : '<span class="empty">No ideas yet. Add one!</span>') +
       '</div>';
@@ -343,6 +459,65 @@ $('app').addEventListener('click', async e => {
   const r = await sb.from('gifts').delete().eq('id', Number(b.dataset.del));
   if(r.error) alert(r.error.message);
   await refresh();
+});
+
+// votes and comments (the database hides them from the person an idea is for)
+$('others').addEventListener('input', e => {
+  const d = e.target.dataset && e.target.dataset.draft;
+  if(d) drafts[d] = e.target.value;
+});
+$('others').addEventListener('keydown', e => {
+  if(e.key === 'Enter' && e.target.dataset && e.target.dataset.draft){
+    e.preventDefault();
+    const b = e.target.parentElement.querySelector('[data-post]');
+    if(b) b.click();
+  }
+});
+$('others').addEventListener('click', async e => {
+  const t = e.target.closest('button');
+  if(!t) return;
+  if(t.dataset.vote){
+    const id = Number(t.dataset.vote);
+    const mine = votes.some(v => v.gift_id === id && v.voter_id === me.id);
+    t.disabled = true;
+    const r = mine
+      ? await sb.from('votes').delete().eq('gift_id', id).eq('voter_id', me.id)
+      : await sb.from('votes').insert({ gift_id: id, voter_id: me.id });
+    if(r.error) alert(r.error.message);
+    await refreshSocial();
+  }else if(t.dataset.thread){
+    const id = Number(t.dataset.thread);
+    if(openThreads.has(id)) openThreads.delete(id); else openThreads.add(id);
+    renderLists();
+    const inp = openThreads.has(id) ? $('others').querySelector(`input[data-draft="${id}"]`) : null;
+    if(inp) inp.focus();
+  }else if(t.dataset.post){
+    const id = Number(t.dataset.post);
+    const inp = $('others').querySelector(`input[data-draft="${id}"]`);
+    const body = inp ? inp.value.trim() : '';
+    if(!body) return;
+    t.disabled = true;
+    const r = await sb.from('comments').insert({ gift_id: id, author_id: me.id, body });
+    if(r.error){ alert(r.error.message); t.disabled = false; return; }
+    drafts[id] = '';
+    await refreshSocial();
+    const again = $('others').querySelector(`input[data-draft="${id}"]`);
+    if(again) again.focus();
+  }else if(t.dataset.likec){
+    const id = Number(t.dataset.likec);
+    const mine = commentLikes.some(l => l.comment_id === id && l.liker_id === me.id);
+    t.disabled = true;
+    const r = mine
+      ? await sb.from('comment_likes').delete().eq('comment_id', id).eq('liker_id', me.id)
+      : await sb.from('comment_likes').insert({ comment_id: id, liker_id: me.id });
+    if(r.error) alert(r.error.message);
+    await refreshSocial();
+  }else if(t.dataset.delc){
+    if(!confirm('Delete this comment?')) return;
+    const r = await sb.from('comments').delete().eq('id', Number(t.dataset.delc));
+    if(r.error) alert(r.error.message);
+    await refreshSocial();
+  }
 });
 
 // pick up new ideas when someone returns to the tab

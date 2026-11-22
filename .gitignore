@@ -1,0 +1,4 @@
+setup.sql
+*.sql
+.env
+Claude outputs/
