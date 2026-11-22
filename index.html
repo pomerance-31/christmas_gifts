@@ -561,35 +561,34 @@ function renderCats(scope, name){
   const el = $('cats');
   const off = () => { el.innerHTML = ''; $('cols').classList.remove('withcats'); };
   if(!scope || !scope.length){ off(); return; }
+  const tally = (list, key) => { const c = {}; list.forEach(g => { const k = g[key]; if(k) c[k] = (c[k] || 0) + 1; }); return c; };
 
-  // categories
-  const counts = {};
-  scope.forEach(g => { if(g.category) counts[g.category] = (counts[g.category] || 0) + 1; });
-  const names = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
-  const useCats = scope.length >= 3 && (names.length > 0 || catBusy);
-  if(!useCats || (catFilter !== 'all' && !counts[catFilter])) catFilter = 'all';
-
-  // who posted (the options come from the whole list, so they stay put while a category is picked)
+  // each filter narrows the options of the other one
+  const catCounts = tally(byPoster(scope), 'category');
+  const posterCounts = tally(byCat(scope), 'posted_by');
+  const hasCats = scope.some(g => g.category);
+  const useCats = scope.length >= 3 && (hasCats || catBusy);
   const posters = profiles.map(p => p.id).filter(id => scope.some(g => g.posted_by === id));
   const usePosters = posters.length >= 2;
-  if(!usePosters || (postedBy !== 'all' && !posters.includes(postedBy))) postedBy = 'all';
+  if(!useCats || (catFilter !== 'all' && !catCounts[catFilter])) catFilter = 'all';
+  if(!usePosters || (postedBy !== 'all' && !posterCounts[postedBy])) postedBy = 'all';
 
   if(!useCats && !usePosters){ off(); return; }
-  const inCat = byCat(scope);
+  const names = Object.keys(catCounts).sort((a, b) => catCounts[b] - catCounts[a] || a.localeCompare(b));
   const btn = (attr, val, on, label, n) => `<button type="button" class="catbtn ${on ? 'on' : ''}" ${attr}="${esc(val)}"><span>${esc(label)}</span><small>${n}</small></button>`;
   let html = '';
   if(useCats){
     html += `<div class="catshead">Categories</div><div class="catsub">AI generated from ${esc(name)}</div><div class="catlist">`
-      + (names.length
-        ? btn('data-cat', 'all', catFilter === 'all', 'All', scope.length) + names.map(c => btn('data-cat', c, catFilter === c, c, counts[c])).join('')
+      + (hasCats
+        ? btn('data-cat', 'all', catFilter === 'all', 'All', byPoster(scope).length) + names.map(c => btn('data-cat', c, catFilter === c, c, catCounts[c])).join('')
           + (catBusy ? '<div class="catnote">Sorting new ideas...</div>' : '')
         : '<div class="catnote">Sorting ideas...</div>')
       + '</div>';
   }
   if(usePosters){
     html += `<div class="catshead ${useCats ? 'second' : ''}">Filter by who posted</div><div class="catsub">Show one person's ideas</div><div class="catlist">`
-      + btn('data-poster', 'all', postedBy === 'all', 'All', inCat.length)
-      + posters.map(id => btn('data-poster', id, postedBy === id, id === me.id ? 'You' : nameOf(id), inCat.filter(g => g.posted_by === id).length)).join('')
+      + btn('data-poster', 'all', postedBy === 'all', 'All', byCat(scope).length)
+      + posters.filter(id => posterCounts[id]).map(id => btn('data-poster', id, postedBy === id, id === me.id ? 'You' : nameOf(id), posterCounts[id])).join('')
       + '</div>';
   }
   el.innerHTML = html;
