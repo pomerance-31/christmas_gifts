@@ -113,6 +113,22 @@ button:disabled{opacity:.6;cursor:default}
 #addbody{margin-top:12px}
 .people.single{grid-template-columns:1fr}
 .people .wide{grid-column:1/-1}
+.cols.withcats{display:grid;grid-template-columns:210px minmax(0,1fr);gap:16px;align-items:start}
+.cats{padding:14px}
+.cats:empty{display:none}
+.catshead{font-family:'Mountains of Christmas',Georgia,serif;font-size:1.3rem;color:var(--green)}
+.catsub{font-size:.75rem;color:#7a6a45;margin-bottom:8px}
+.catlist{display:flex;flex-direction:column;gap:4px}
+.catbtn{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;background:transparent;color:var(--dark);border:1px solid transparent;border-radius:8px;padding:4px 8px;font-size:.9rem;font-weight:600}
+.catbtn:hover{background:#f3ead2}
+.catbtn.on{background:#f3ead2;border-color:var(--dark);font-weight:700}
+.catbtn small{opacity:.7}
+.catnote{font-size:.82rem;font-style:italic;color:#7a6a45;padding:4px 8px}
+@media(max-width:700px){
+  .cols.withcats{grid-template-columns:1fr}
+  .catlist{flex-direction:row;flex-wrap:wrap}
+  .catbtn{width:auto;border-color:#b8a674}
+}
 .forchips{display:flex;flex-wrap:wrap;gap:6px}
 .forline{font-size:.8rem;font-weight:700;color:var(--green)}
 .edit input,.edit textarea{margin-bottom:6px}
@@ -192,7 +208,10 @@ button:disabled{opacity:.6;cursor:default}
   <div class="card" id="mine"></div>
 
   <h2 class="section-title" id="othersTitle">🎁 Everyone else</h2>
-  <div class="people" id="others"></div>
+  <div class="cols" id="cols">
+    <aside class="card cats" id="cats"></aside>
+    <div class="people" id="others"></div>
+  </div>
 </div>
 
 <script>
@@ -527,7 +546,7 @@ $('tabs').addEventListener('click', e => {
   const b = e.target.closest('button[data-view]');
   if(!b) return;
   view = b.dataset.view;
-  postedBy = 'all';
+  postedBy = 'all'; catFilter = 'all';
   try{ localStorage.setItem('giftView', view); }catch(_){}
   if(view !== 'all' && view !== 'shared') setChosen([view]);
   renderLists();
@@ -538,6 +557,50 @@ $('toggleAdd').onclick = () => {
   $('toggleAdd').setAttribute('aria-expanded', open);
   $('toggleAdd').textContent = open ? '🎁 Add a gift idea ▾' : '🎁 Add a gift idea ▸';
 };
+
+// categories: sorted by the model, saved on each idea, shown in the sidebar
+let catFilter = 'all', catBusy = false;
+const catTried = new Set();
+const byCat = list => catFilter === 'all' ? list : list.filter(g => g.category === catFilter);
+
+function renderCats(scope, name){
+  const el = $('cats');
+  const off = () => { el.innerHTML = ''; $('cols').classList.remove('withcats'); };
+  if(!scope || scope.length < 3){ off(); return; }
+  const counts = {};
+  scope.forEach(g => { if(g.category) counts[g.category] = (counts[g.category] || 0) + 1; });
+  const names = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+  if(catFilter !== 'all' && !counts[catFilter]) catFilter = 'all';
+  if(!names.length && !catBusy){ off(); return; }
+  const btn = (c, label, n) => `<button type="button" class="catbtn ${catFilter === c ? 'on' : ''}" data-cat="${esc(c)}"><span>${esc(label)}</span><small>${n}</small></button>`;
+  const body = names.length
+    ? btn('all', 'All', scope.length) + names.map(c => btn(c, c, counts[c])).join('') + (catBusy ? '<div class="catnote">Sorting new ideas...</div>' : '')
+    : '<div class="catnote">Sorting ideas...</div>';
+  el.innerHTML = `<div class="catshead">Categories</div><div class="catsub">AI generated from ${esc(name)}</div><div class="catlist">${body}</div>`;
+  $('cols').classList.add('withcats');
+}
+
+$('cats').addEventListener('click', e => {
+  const b = e.target.closest('button[data-cat]');
+  if(!b) return;
+  catFilter = b.dataset.cat;
+  renderLists();
+});
+
+async function ensureCategories(scope){
+  if(!scope || scope.length < 3 || catBusy || !scope.some(g => !g.category)) return;
+  const key = scope.map(g => g.id).join(',');
+  if(catTried.has(key)) return;
+  catTried.add(key);
+  catBusy = true;
+  renderLists();
+  try{
+    const { data, error } = await sb.functions.invoke('parse-gift', { body: { mode: 'categorize', ids: scope.map(g => g.id) } });
+    if(!error && data && data.categories) gifts.forEach(g => { if(data.categories[g.id]) g.category = data.categories[g.id]; });
+  }catch(_){ /* the sidebar just stays off */ }
+  catBusy = false;
+  renderLists();
+}
 
 // filter a person's list (or the Shared list) by who posted it
 let postedBy = 'all';
@@ -575,25 +638,37 @@ function renderLists(){
   $('mine').innerHTML = mine.length ? mine.map(g => giftHTML(g, false)).join('')
     : '<span class="empty">You have not added any ideas for yourself yet.</span>';
 
+  // the ideas the category sidebar covers: one person's tab, or the Shared tab
+  let scope = null, scopeName = '';
+  if(view === 'shared'){ scope = sharedOthers(); scopeName = 'the shared gifts'; }
+  else if(view !== 'all' && view !== me.id){
+    const sp = profiles.find(x => x.id === view);
+    if(sp){ scope = visibleFor(sp.id).filter(g => !forMe(g)); scopeName = `${sp.name}'s gifts`; }
+  }
+  renderCats(scope, scopeName);
+
   const people = profiles.filter(p => p.id !== me.id && (view === 'all' || p.id === view));
   let html = people.map(p => {
     // Everyone view: only ideas for this person alone (shared ones have their own card). One person's tab: all of theirs.
     const base = visibleFor(p.id).filter(g => !forMe(g) && (view !== 'all' || !isShared(g))).sort(byVotes);
-    const row = view === 'all' ? '' : posterRow(base);
-    const list = view === 'all' ? base : byPoster(base);
+    const inCat = view === 'all' ? base : byCat(base);
+    const row = view === 'all' ? '' : posterRow(inCat);
+    const list = view === 'all' ? base : byPoster(inCat);
     return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` + row +
       (list.length ? list.map(g => giftHTML(g, true)).join('') : '<span class="empty">No ideas yet. Add one!</span>') +
       '</div>';
   }).join('');
   const sharedAll = sharedOthers().sort(byVotes);
-  const sharedRow = view === 'shared' ? posterRow(sharedAll) : '';
-  const shared = view === 'shared' ? byPoster(sharedAll) : sharedAll;
+  const sharedIn = view === 'shared' ? byCat(sharedAll) : sharedAll;
+  const sharedRow = view === 'shared' ? posterRow(sharedIn) : '';
+  const shared = view === 'shared' ? byPoster(sharedIn) : sharedAll;
   if(view === 'shared' || (view === 'all' && shared.length)){
     html += `<div class="card person wide"><h3>👥 Shared gifts</h3>` + sharedRow +
       (shared.length ? shared.map(g => giftHTML(g, true)).join('') : '<span class="empty">No shared ideas yet. Tick two or more names when you add one.</span>') +
       '</div>';
   }
   $('others').innerHTML = html;
+  ensureCategories(scope);
 }
 
 // bought checkbox
