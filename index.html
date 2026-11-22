@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Family Christmas</title>
-<link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--red:#b3202a;--green:#1f6b3a;--cream:#fff8ec;--gold:#e6b422;--dark:#12382a}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;font-family:'Nunito',system-ui,sans-serif;color:var(--dark);
   background:linear-gradient(#0f3d2b,#165a3c 60%,#0f3d2b);background-attachment:fixed}
-h1,h2,h3{font-family:'Mountains of Christmas',Georgia,serif;margin:0}
+h1,h2,h3{font-family:'Lobster',Georgia,serif;font-weight:400;margin:0}
 .snow{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
 .flake{position:absolute;top:-20px;color:#fff;opacity:.8;animation:fall linear infinite}
 @keyframes fall{to{transform:translateY(110vh) translateX(40px)}}
@@ -70,13 +70,10 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 .buy{display:flex;align-items:center;gap:8px;font-weight:700;font-size:.9rem;margin-left:auto;flex:none;cursor:pointer}
 .buy.on{background:#e3f3e6;border:2px solid var(--green);border-radius:10px;padding:6px 10px;color:var(--green)}
 .buy small{display:block;font-weight:600;opacity:.8}
-.pfrow{align-items:center;margin-bottom:10px}
-.pflabel{font-size:.85rem;font-weight:700;color:#7a6a45}
-.pf{background:transparent;color:var(--dark);border:1px solid #b8a674;border-radius:8px;padding:2px 9px;font-size:.82rem;font-weight:600}
-.pf:hover{background:#f3ead2}
-.pf.on{background:#f3ead2;border-color:var(--dark);font-weight:700}
-.pfnote{font-size:.85rem;margin:-4px 0 10px;color:#5c4d28}
-.pfnote a{color:var(--red);font-weight:700}
+.catshead.second{margin-top:14px}
+.catreset{background:transparent;color:var(--red);border:0;padding:0 0 8px;font-size:.85rem;font-weight:700;text-decoration:underline}
+.catreset:hover{background:transparent;color:#d02a36}
+.catreset:disabled{opacity:.35;text-decoration:none;cursor:default}
 .gift .x{background:transparent;color:#999;padding:0 6px;font-size:1rem;align-self:flex-start}
 .gift .x:hover{background:transparent;color:var(--red)}
 .empty{opacity:.6;font-style:italic}
@@ -108,11 +105,28 @@ button:disabled{opacity:.6;cursor:default}
 .tab:hover{background:#fff3d6}
 .tab.on{background:var(--red);color:#fff;border-color:#fff}
 .tab small{opacity:.7;font-weight:700;margin-left:2px}
-.addtoggle{width:100%;text-align:left;background:transparent;color:var(--red);font-family:'Mountains of Christmas',Georgia,serif;font-size:1.5rem;padding:0}
+.addcard{margin-bottom:16px}
+.addtoggle{width:100%;text-align:left;background:transparent;color:var(--red);font-family:'Lobster',Georgia,serif;font-weight:400;font-size:1.5rem;padding:0}
 .addtoggle:hover{background:transparent}
 #addbody{margin-top:12px}
 .people.single{grid-template-columns:1fr}
 .people .wide{grid-column:1/-1}
+.cols.withcats{display:grid;grid-template-columns:210px minmax(0,1fr);gap:16px;align-items:start}
+.cats{padding:14px}
+.cats:empty{display:none}
+.catshead{font-family:'Lobster',Georgia,serif;font-weight:400;font-size:1.3rem;color:var(--green)}
+.catsub{font-size:.75rem;color:#7a6a45;margin-bottom:8px}
+.catlist{display:flex;flex-direction:column;gap:4px}
+.catbtn{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;background:transparent;color:var(--dark);border:1px solid transparent;border-radius:8px;padding:4px 8px;font-size:.9rem;font-weight:600}
+.catbtn:hover{background:#f3ead2}
+.catbtn.on{background:#f3ead2;border-color:var(--dark);font-weight:700}
+.catbtn small{opacity:.7}
+.catnote{font-size:.82rem;font-style:italic;color:#7a6a45;padding:4px 8px}
+@media(max-width:700px){
+  .cols.withcats{grid-template-columns:1fr}
+  .catlist{flex-direction:row;flex-wrap:wrap}
+  .catbtn{width:auto;border-color:#b8a674}
+}
 .forchips{display:flex;flex-wrap:wrap;gap:6px}
 .forline{font-size:.8rem;font-weight:700;color:var(--green)}
 .edit input,.edit textarea{margin-bottom:6px}
@@ -165,7 +179,7 @@ button:disabled{opacity:.6;cursor:default}
 
   <div class="tabs" id="tabs"></div>
 
-  <div class="card">
+  <div class="card addcard">
     <button type="button" class="addtoggle" id="toggleAdd" aria-expanded="false">🎁 Add a gift idea ▸</button>
     <div id="addbody" class="hidden">
     <div class="quick">
@@ -192,7 +206,10 @@ button:disabled{opacity:.6;cursor:default}
   <div class="card" id="mine"></div>
 
   <h2 class="section-title" id="othersTitle">🎁 Everyone else</h2>
-  <div class="people" id="others"></div>
+  <div class="cols" id="cols">
+    <aside class="card cats" id="cats"></aside>
+    <div class="people" id="others"></div>
+  </div>
 </div>
 
 <script>
@@ -527,7 +544,7 @@ $('tabs').addEventListener('click', e => {
   const b = e.target.closest('button[data-view]');
   if(!b) return;
   view = b.dataset.view;
-  postedBy = 'all';
+  postedBy = 'all'; catFilter = 'all';
   try{ localStorage.setItem('giftView', view); }catch(_){}
   if(view !== 'all' && view !== 'shared') setChosen([view]);
   renderLists();
@@ -539,27 +556,76 @@ $('toggleAdd').onclick = () => {
   $('toggleAdd').textContent = open ? '🎁 Add a gift idea ▾' : '🎁 Add a gift idea ▸';
 };
 
-// filter a person's list (or the Shared list) by who posted it
-let postedBy = 'all';
-function posterRow(list){
-  const ids = profiles.map(p => p.id).filter(id => list.some(g => g.posted_by === id));
-  if(postedBy !== 'all' && !ids.includes(postedBy)) postedBy = 'all';
-  if(ids.length < 2) return '';
-  const chip = (id, label, n) => `<button type="button" class="pf ${postedBy === id ? 'on' : ''}" data-poster="${id}">${label}${n === null ? '' : ` <small>${n}</small>`}</button>`;
-  const note = postedBy === 'all' ? ''
-    : `<div class="pfnote">Showing only ideas posted by ${postedBy === me.id ? 'you' : esc(nameOf(postedBy))}. <a href="#" data-poster="all">Show all</a></div>`;
-  return `<div class="tabs pfrow"><span class="pflabel">🔎 Filter by who posted:</span>` + chip('all', 'All', null)
-    + ids.map(id => chip(id, id === me.id ? 'You' : esc(nameOf(id)), list.filter(g => g.posted_by === id).length)).join('') + '</div>' + note;
-}
-const byPoster = list => postedBy === 'all' ? list : list.filter(g => g.posted_by === postedBy);
+// categories: sorted by the model, saved on each idea, shown in the sidebar
+let catFilter = 'all', catBusy = false;
+const catTried = new Set();
+const byCat = list => catFilter === 'all' ? list : list.filter(g => g.category === catFilter);
 
-$('others').addEventListener('click', e => {
-  const b = e.target.closest('[data-poster]');
+function renderCats(scope, name){
+  const el = $('cats');
+  const off = () => { el.innerHTML = ''; $('cols').classList.remove('withcats'); };
+  if(!scope || !scope.length){ off(); return; }
+  const tally = (list, key) => { const c = {}; list.forEach(g => { const k = g[key]; if(k) c[k] = (c[k] || 0) + 1; }); return c; };
+
+  // each filter narrows the options of the other one
+  const catCounts = tally(byPoster(scope), 'category');
+  const posterCounts = tally(byCat(scope), 'posted_by');
+  const hasCats = scope.some(g => g.category);
+  const useCats = scope.length >= 3 && (hasCats || catBusy);
+  const posters = profiles.map(p => p.id).filter(id => scope.some(g => g.posted_by === id));
+  const usePosters = posters.length >= 2;
+  if(!useCats || (catFilter !== 'all' && !catCounts[catFilter])) catFilter = 'all';
+  if(!usePosters || (postedBy !== 'all' && !posterCounts[postedBy])) postedBy = 'all';
+
+  if(!useCats && !usePosters){ off(); return; }
+  const names = Object.keys(catCounts).sort((a, b) => catCounts[b] - catCounts[a] || a.localeCompare(b));
+  const btn = (attr, val, on, label, n) => `<button type="button" class="catbtn ${on ? 'on' : ''}" ${attr}="${esc(val)}"><span>${esc(label)}</span><small>${n}</small></button>`;
+  const active = catFilter !== 'all' || postedBy !== 'all';
+  let html = `<button type="button" class="catreset" data-reset="1" ${active ? '' : 'disabled'}>✕ Reset filters</button>`;
+  if(useCats){
+    html += `<div class="catshead">Categories</div><div class="catsub">AI generated from ${esc(name)}</div><div class="catlist">`
+      + (hasCats
+        ? btn('data-cat', 'all', catFilter === 'all', 'All', byPoster(scope).length) + names.map(c => btn('data-cat', c, catFilter === c, c, catCounts[c])).join('')
+          + (catBusy ? '<div class="catnote">Sorting new ideas...</div>' : '')
+        : '<div class="catnote">Sorting ideas...</div>')
+      + '</div>';
+  }
+  if(usePosters){
+    html += `<div class="catshead ${useCats ? 'second' : ''}">Filter by who posted</div><div class="catsub">Show one person's ideas</div><div class="catlist">`
+      + btn('data-poster', 'all', postedBy === 'all', 'All', byCat(scope).length)
+      + posters.filter(id => posterCounts[id]).map(id => btn('data-poster', id, postedBy === id, id === me.id ? 'You' : nameOf(id), posterCounts[id])).join('')
+      + '</div>';
+  }
+  el.innerHTML = html;
+  $('cols').classList.add('withcats');
+}
+
+$('cats').addEventListener('click', e => {
+  const b = e.target.closest('button[data-cat], button[data-poster], button[data-reset]');
   if(!b) return;
-  e.preventDefault();
-  postedBy = b.dataset.poster;
+  if(b.dataset.reset){ catFilter = 'all'; postedBy = 'all'; }
+  else if(b.dataset.cat !== undefined) catFilter = b.dataset.cat;
+  else postedBy = b.dataset.poster;
   renderLists();
 });
+
+async function ensureCategories(scope){
+  if(!scope || scope.length < 3 || catBusy || !scope.some(g => !g.category)) return;
+  const key = scope.map(g => g.id).join(',');
+  if(catTried.has(key)) return;
+  catTried.add(key);
+  catBusy = true;
+  renderLists();
+  try{
+    const { data, error } = await sb.functions.invoke('parse-gift', { body: { mode: 'categorize', ids: scope.map(g => g.id) } });
+    if(!error && data && data.categories) gifts.forEach(g => { if(data.categories[g.id]) g.category = data.categories[g.id]; });
+  }catch(_){ /* the sidebar just stays off */ }
+  catBusy = false;
+  renderLists();
+}
+
+let postedBy = 'all';
+const byPoster = list => postedBy === 'all' ? list : list.filter(g => g.posted_by === postedBy);
 
 function renderLists(){
   renderTabs();
@@ -575,25 +641,33 @@ function renderLists(){
   $('mine').innerHTML = mine.length ? mine.map(g => giftHTML(g, false)).join('')
     : '<span class="empty">You have not added any ideas for yourself yet.</span>';
 
+  // the ideas the category sidebar covers: one person's tab, or the Shared tab
+  let scope = null, scopeName = '';
+  if(view === 'shared'){ scope = sharedOthers(); scopeName = 'the shared gifts'; }
+  else if(view !== 'all' && view !== me.id){
+    const sp = profiles.find(x => x.id === view);
+    if(sp){ scope = visibleFor(sp.id).filter(g => !forMe(g)); scopeName = `${sp.name}'s gifts`; }
+  }
+  renderCats(scope, scopeName);
+
   const people = profiles.filter(p => p.id !== me.id && (view === 'all' || p.id === view));
   let html = people.map(p => {
     // Everyone view: only ideas for this person alone (shared ones have their own card). One person's tab: all of theirs.
     const base = visibleFor(p.id).filter(g => !forMe(g) && (view !== 'all' || !isShared(g))).sort(byVotes);
-    const row = view === 'all' ? '' : posterRow(base);
-    const list = view === 'all' ? base : byPoster(base);
-    return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` + row +
+    const list = view === 'all' ? base : byPoster(byCat(base));
+    return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` +
       (list.length ? list.map(g => giftHTML(g, true)).join('') : '<span class="empty">No ideas yet. Add one!</span>') +
       '</div>';
   }).join('');
   const sharedAll = sharedOthers().sort(byVotes);
-  const sharedRow = view === 'shared' ? posterRow(sharedAll) : '';
-  const shared = view === 'shared' ? byPoster(sharedAll) : sharedAll;
+  const shared = view === 'shared' ? byPoster(byCat(sharedAll)) : sharedAll;
   if(view === 'shared' || (view === 'all' && shared.length)){
-    html += `<div class="card person wide"><h3>👥 Shared gifts</h3>` + sharedRow +
+    html += `<div class="card person wide"><h3>👥 Shared gifts</h3>` +
       (shared.length ? shared.map(g => giftHTML(g, true)).join('') : '<span class="empty">No shared ideas yet. Tick two or more names when you add one.</span>') +
       '</div>';
   }
   $('others').innerHTML = html;
+  ensureCategories(scope);
 }
 
 // bought checkbox

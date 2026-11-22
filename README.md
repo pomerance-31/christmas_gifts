@@ -9,6 +9,7 @@ A small private site where a family shares Christmas gift ideas for each other. 
 - **Shared ideas** can be for more than one person. They show on a Shared tab and on each recipient's tab with a "For A + B" line. Nobody they are for can see them.
 - **Add an idea** with a name (required), link and notes. Tick one or more people. While you type, the form flags similar ideas already on the list.
 - **Quick add** takes a casual note like "board game for Sam and Alex, they love co-op games". The page asks Claude Haiku to fill in the form, and you still click "Add idea" yourself.
+- **Categories:** on a person's tab and the Shared tab, a sidebar lists AI generated categories for that list (Books, Clothing and so on) with counts, and clicking one filters the list. On a phone it becomes a row of chips.
 - **Editing and deleting** are limited to ideas you posted. You can change the name, link and notes but not who it is for.
 - You can't like or comment on ideas you posted for yourself.
 
@@ -60,6 +61,7 @@ create table profiles (
 create table gifts (
   id bigint generated always as identity primary key,
   recipient_ids uuid[] not null check (cardinality(recipient_ids) between 1 and 12),
+  category text check (category is null or char_length(category) <= 40),
   posted_by uuid not null references profiles(id),
   name text not null,
   link text,
@@ -112,6 +114,16 @@ alter table purchases enable row level security;
 alter table votes enable row level security;
 alter table comments enable row level security;
 alter table comment_likes enable row level security;
+
+-- lets the categorize call fill in an empty category on an idea the caller can see
+create function set_gift_category(gid bigint, cat text) returns void
+language sql security definer set search_path = public as $$
+  update gifts set category = left(trim(cat), 40)
+  where id = gid and category is null
+    and not (my_profile_id() = any(recipient_ids));
+$$;
+revoke all on function set_gift_category(bigint, text) from public, anon;
+grant execute on function set_gift_category(bigint, text) to authenticated;
 
 -- profiles
 create policy "read profiles" on profiles for select to authenticated using (true);
@@ -182,6 +194,15 @@ create policy "remove own comment like" on comment_likes for delete to authentic
 4. Calls the Anthropic Messages API with a forced tool call, `fill_gift_form`, and an enum of the family names for the recipients.
 5. Checks the result before returning it. Recipients must be family names, a link is kept only if it appears in the note, em dashes are replaced and lengths are capped.
 6. Returns `{ recipients, gift, link, notes, extra_ideas, problem }`. The `problem` text is built in code, not by the model.
+
+## Categories (`parse-gift`, mode `categorize`)
+
+When a person's tab or the Shared tab opens and some ideas have no category yet, the page sends the list's idea ids to `parse-gift` with `mode: "categorize"`.
+
+1. The function reads those ideas with the caller's login, so it only sees ideas the caller is allowed to see.
+2. Only ideas without a category go to the model, along with the categories already used on that list and a starter list. Existing categories are reused first, so the same list keeps the same categories.
+3. Each answer is saved through `set_gift_category`, which only fills empty categories and never overwrites one.
+4. The function returns what is stored, so everyone sees the same categories. If the call fails, the sidebar stays hidden.
 
 ## Things to know
 
