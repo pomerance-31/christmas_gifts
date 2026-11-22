@@ -153,7 +153,7 @@ button:disabled{opacity:.6;cursor:default}
     <div id="addbody" class="hidden">
     <div class="quick">
       <label for="quick">✨ Quick add: type it in your own words</label>
-      <textarea id="quick" rows="2" maxlength="500"></textarea>
+      <textarea id="quick" rows="2" maxlength="1000"></textarea>
       <div class="quickrow">
         <button type="button" id="fill">Fill it in ✨</button>
         <span id="fillmsg" style="color:var(--green)">Say who it is for, and add a link if you have one.</span>
@@ -164,7 +164,7 @@ button:disabled{opacity:.6;cursor:default}
       <div><label for="for">Who is it for?</label><select id="for"></select></div>
       <div><label for="name">Gift</label><input id="name" required maxlength="120" placeholder="e.g., a Rolex"></div>
       <div class="full"><label for="link">Link (optional)</label><input id="link" type="url" placeholder="https://"></div>
-      <div class="full"><label for="notes">Notes (optional)</label><textarea id="notes" rows="2" maxlength="300" placeholder="Size, color, etc."></textarea></div>
+      <div class="full"><label for="notes">Notes (optional)</label><textarea id="notes" rows="2" maxlength="1000" placeholder="Size, color, etc."></textarea></div>
       <div class="full hint" id="hint"></div>
       <div class="full"><button type="submit">Add idea ⭐</button></div>
     </form>
@@ -396,7 +396,7 @@ function editHTML(g){
   return `<div class="gift"><span>✏️</span><div class="grow edit">
     <input data-e="name" maxlength="120" value="${esc(g.name)}" placeholder="Gift">
     <input data-e="link" type="url" value="${esc(g.link || '')}" placeholder="Link (optional)">
-    <textarea data-e="notes" rows="2" maxlength="300" placeholder="Notes (optional)">${esc(g.notes || '')}</textarea>
+    <textarea data-e="notes" rows="2" maxlength="1000" placeholder="Notes (optional)">${esc(g.notes || '')}</textarea>
     <div class="editbtns"><button type="button" data-save="${g.id}">Save</button> <button type="button" class="ghost" data-cancel="1">Cancel</button></div>
   </div></div>`;
 }
