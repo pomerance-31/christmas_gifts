@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parsonnet Family Christmas</title>
+<link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--red:#b3202a;--green:#1f6b3a;--cream:#fff8ec;--gold:#e6b422;--dark:#12382a}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:'Nunito',system-ui,sans-serif;color:var(--dark);
+  background:linear-gradient(#0f3d2b,#165a3c 60%,#0f3d2b);background-attachment:fixed}
+h1,h2,h3{font-family:'Mountains of Christmas',Georgia,serif;margin:0}
+.snow{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+.flake{position:absolute;top:-20px;color:#fff;opacity:.8;animation:fall linear infinite}
+@keyframes fall{to{transform:translateY(110vh) translateX(40px)}}
+.wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:20px 16px 60px}
+.card{background:var(--cream);border-radius:16px;padding:20px;box-shadow:0 6px 18px rgba(0,0,0,.3);border:3px solid var(--gold)}
+.stripe{height:10px;border-radius:5px;margin:14px 0;
+  background:repeating-linear-gradient(45deg,var(--red) 0 12px,#fff 12px 24px)}
+button{font:inherit;font-weight:700;background:var(--red);color:#fff;border:0;border-radius:10px;padding:10px 18px;cursor:pointer}
+button:hover{background:#d02a36}
+button.ghost{background:transparent;color:#fff;border:2px solid #fff}
+input,select,textarea{font:inherit;width:100%;padding:9px 10px;border:2px solid #cdb98a;border-radius:10px;background:#fff}
+label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
+.hidden{display:none !important}
+
+/* login and setup screens */
+.screen{display:flex;align-items:center;justify-content:center;min-height:100vh;position:relative;z-index:1;padding:16px}
+.screen .card{max-width:400px;width:100%;text-align:center}
+.screen h1{font-size:2.6rem;color:var(--red)}
+.tree{font-size:3rem}
+.row{text-align:left;margin:14px 0}
+.msg{color:var(--red);font-weight:700;min-height:1.3em;margin-bottom:8px}
+.demo{font-size:.8rem;opacity:.7;margin-top:12px}
+.screen a{color:var(--red);font-size:.9rem}
+#icons{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+#icons button{background:#fff;border:3px solid #e6d9b8;border-radius:12px;font-size:1.6rem;padding:6px 0;line-height:1}
+#icons button:hover{background:#fff3d6}
+#icons button.sel{border-color:var(--red);background:#ffe9e9}
+
+/* header */
+.top{display:flex;justify-content:space-between;align-items:center;color:#fff;gap:10px;flex-wrap:wrap}
+.top h1{font-size:2.2rem}
+
+/* add form */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+.hint{background:#eef6ee;border:2px dashed var(--green);border-radius:10px;padding:10px 12px;font-size:.9rem}
+.hint ul{margin:6px 0 0;padding-left:20px}
+.hint .dupe{color:var(--red);font-weight:700}
+
+/* lists */
+.section-title{color:#fff;font-size:1.7rem;margin:28px 0 10px}
+.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+.person h3{color:var(--green);font-size:1.5rem;border-bottom:3px solid var(--red);padding-bottom:4px;margin-bottom:10px}
+.gift{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #e6d9b8}
+.gift:last-child{border:0}
+.gift input[type=checkbox]{width:20px;height:20px;margin-top:3px;accent-color:var(--green);flex:none}
+.gift .grow{flex:1;min-width:0;overflow-wrap:anywhere}
+.gift .name{font-weight:700}
+.gift.done .name{text-decoration:line-through;opacity:.5}
+.gift a{color:var(--red);font-size:.9rem}
+.gift .notes{font-size:.88rem;opacity:.8}
+.gift .by{font-size:.8rem;color:var(--green);font-weight:700}
+.gift .x{background:transparent;color:#999;padding:0 6px;font-size:1rem;align-self:flex-start}
+.gift .x:hover{background:transparent;color:var(--red)}
+.empty{opacity:.6;font-style:italic}
+@media(max-width:560px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="snow" id="snow"></div>
+
+<!-- SIGN IN -->
+<div class="screen" id="loginScreen">
+  <div class="card">
+    <div class="tree">🎄</div>
+    <h1>Parsonnet Family Christmas</h1>
+    <div class="stripe"></div>
+    <p>Helping keep track of gift ideas for the fam</p>
+    <div class="row"><label for="email">Email</label><input id="email" type="email" autocomplete="username"></div>
+    <div class="row"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
+    <div class="msg" id="loginMsg"></div>
+    <button id="signin">Enter ❄️</button>
+    <div style="margin-top:12px"><a href="#" id="forgot">Forgot password?</a></div>
+    <div class="demo">First time here? Use the invite link in your email.</div>
+  </div>
+</div>
+
+<!-- FIRST LOGIN SETUP (also used for password resets) -->
+<div class="screen hidden" id="setupScreen">
+  <div class="card">
+    <div class="tree">🎅</div>
+    <h1 id="setupTitle"></h1>
+    <div class="stripe"></div>
+    <p id="setupIntro"></p>
+    <div class="row"><label for="npw">Password</label><input id="npw" type="password" autocomplete="new-password"></div>
+    <div class="row"><label for="npw2">Confirm password</label><input id="npw2" type="password" autocomplete="new-password"></div>
+    <div class="row" id="iconRow"><label>Pick your icon</label><div id="icons"></div></div>
+    <div class="msg" id="setupMsg"></div>
+    <button id="savesetup">Save and enter ❄️</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="wrap hidden" id="app">
+  <div class="top">
+    <h1><span id="myicon">🎅</span> <span id="hi"></span>'s Gift Ideas</h1>
+    <button class="ghost" id="logout">Log out</button>
+  </div>
+  <div class="stripe"></div>
+
+  <div class="card">
+    <h2 style="color:var(--red);margin-bottom:12px">🎁 Add a gift idea</h2>
+    <form id="form" class="grid2">
+      <div><label for="for">Who is it for?</label><select id="for"></select></div>
+      <div><label for="name">Gift</label><input id="name" required maxlength="120" placeholder="e.g., a Rolex"></div>
+      <div class="full"><label for="link">Link (optional)</label><input id="link" type="url" placeholder="https://"></div>
+      <div class="full"><label for="notes">Notes (optional)</label><textarea id="notes" rows="2" maxlength="300" placeholder="Size, color, etc."></textarea></div>
+      <div class="full hint" id="hint"></div>
+      <div class="full"><button type="submit">Add idea ⭐</button></div>
+    </form>
+  </div>
+
+  <h2 class="section-title">🎄 My list</h2>
+  <div class="card" id="mine"></div>
+
+  <h2 class="section-title">🎁 Everyone else</h2>
+  <div class="people" id="others"></div>
+</div>
+
+<script>
+// 1. Paste your two values from Supabase (Project Settings > API)
+const SUPABASE_URL = 'https://yjqfxqulfrpkkmekjbcv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Q-vTvlUIKHXKQ37mnlU3Fg_5ZM75CCI';
+
+const ICONS = ['🎅','🤶','🦌','⛄','🎄','⭐','🎁','🔔','🍪','🧦','🧝','🐻‍❄️'];
+const LINK_TYPE = (location.hash.match(/type=(\w+)/) || [])[1]; // "invite" or "recovery", read before Supabase clears it
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const msg = (id, t) => { $(id).textContent = t; };
+const show = id => ['loginScreen','setupScreen','app'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+
+// snow
+(function(){
+  const s = $('snow');
+  for(let i=0;i<45;i++){
+    const f = document.createElement('div');
+    f.className = 'flake';
+    f.textContent = Math.random() > .3 ? '❄' : '•';
+    f.style.left = Math.random()*100 + 'vw';
+    f.style.fontSize = (8 + Math.random()*16) + 'px';
+    f.style.animationDuration = (8 + Math.random()*12) + 's';
+    f.style.animationDelay = (-Math.random()*15) + 's';
+    s.appendChild(f);
+  }
+})();
+
+if(SUPABASE_URL.startsWith('PASTE')){
+  msg('loginMsg', 'Add your Supabase URL and key at the top of the script first.');
+  throw new Error('Supabase is not configured yet');
+}
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let me = null, profiles = [], gifts = [], buys = [], pick = ICONS[0];
+let passwordPending = LINK_TYPE === 'recovery';
+
+const iconOf = p => p.icon || '🎁';
+const nameOf = id => (profiles.find(p => p.id === id) || {}).name || '?';
+const buyOf = id => buys.find(b => b.gift_id === id);
+const visibleFor = pid => gifts.filter(g => g.recipient_id === pid);
+const safeLink = u => /^https?:\/\//i.test(u || '');
+
+async function loadData(){
+  const [p, g, b] = await Promise.all([
+    sb.from('profiles').select('*').order('name'),
+    sb.from('gifts').select('*').order('created_at'),
+    sb.from('purchases').select('*')
+  ]);
+  profiles = p.data || []; gifts = g.data || []; buys = b.data || [];
+}
+async function refresh(){ await loadData(); renderHint(); renderLists(); }
+
+// icon picker
+$('icons').innerHTML = ICONS.map(i => `<button type="button" data-i="${i}" class="${i === pick ? 'sel' : ''}">${i}</button>`).join('');
+$('icons').onclick = e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  pick = b.dataset.i;
+  [...$('icons').children].forEach(x => x.classList.toggle('sel', x === b));
+};
+
+// auth
+sb.auth.onAuthStateChange((event, session) => {
+  if(event === 'SIGNED_OUT' || !session){ me = null; show('loginScreen'); return; }
+  setTimeout(() => route(session), 0); // outside the callback so Supabase calls do not deadlock
+});
+
+async function route(session){
+  const sameUser = me && session.user.email.toLowerCase() === me.email.toLowerCase();
+  if(sameUser && !$('app').classList.contains('hidden')){ await refresh(); return; }
+  await loadData();
+  me = profiles.find(p => p.email.toLowerCase() === session.user.email.toLowerCase());
+  if(!me){
+    await sb.auth.signOut();
+    msg('loginMsg', 'That email is not on the family list.');
+    return;
+  }
+  if(passwordPending || !me.icon) showSetup(); else enterApp();
+}
+
+function showSetup(){
+  const needIcon = !me.icon;
+  show('setupScreen');
+  $('iconRow').classList.toggle('hidden', !needIcon);
+  $('setupTitle').textContent = needIcon ? `Welcome, ${me.name}!` : 'New password';
+  $('setupIntro').textContent = needIcon
+    ? 'Create a password and pick your icon to get started. 🎁'
+    : 'Choose a new password. 🎁';
+}
+
+function enterApp(){
+  show('app');
+  $('hi').textContent = me.name;
+  $('myicon').textContent = iconOf(me);
+  $('for').innerHTML = profiles.map(p => `<option value="${p.id}">${p.id === me.id ? 'Myself' : esc(p.name)}</option>`).join('');
+  $('for').value = (profiles.find(p => p.id !== me.id) || me).id;
+  renderHint(); renderLists();
+}
+
+$('signin').onclick = async () => {
+  msg('loginMsg', '');
+  const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('pw').value });
+  if(error) msg('loginMsg', 'Wrong email or password.');
+};
+$('pw').onkeydown = e => { if(e.key === 'Enter') $('signin').click(); };
+
+$('forgot').onclick = async e => {
+  e.preventDefault();
+  const email = $('email').value.trim();
+  if(!email){ msg('loginMsg', 'Type your email above first.'); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+  msg('loginMsg', error ? error.message : 'Check your email for a reset link.');
+};
+
+$('savesetup').onclick = async () => {
+  const pw = $('npw').value;
+  if(pw.length < 6){ msg('setupMsg', 'Password needs at least 6 characters.'); return; }
+  if(pw !== $('npw2').value){ msg('setupMsg', 'Passwords do not match.'); return; }
+  let r = await sb.auth.updateUser({ password: pw });
+  if(r.error){ msg('setupMsg', r.error.message); return; }
+  if(!me.icon){
+    r = await sb.from('profiles').update({ icon: pick }).eq('id', me.id).select();
+    if(r.error || !r.data || !r.data.length){ msg('setupMsg', 'Could not save your icon, please try again.'); return; }
+    me.icon = pick;
+  }
+  passwordPending = false;
+  $('npw').value = $('npw2').value = '';
+  msg('setupMsg', '');
+  await loadData();
+  me = profiles.find(p => p.id === me.id);
+  enterApp();
+};
+
+$('logout').onclick = () => sb.auth.signOut();
+
+// duplicate check: shows the list for whoever is selected and flags similar names
+function renderHint(){
+  const pid = $('for').value;
+  const typed = $('name').value.trim().toLowerCase();
+  const title = pid === me.id ? 'Already on your list:' : `Already on ${esc(nameOf(pid))}'s list:`;
+  const items = visibleFor(pid).map(g => {
+    const n = g.name.toLowerCase();
+    const similar = typed.length > 2 && (n.includes(typed) || typed.includes(n));
+    return `<li class="${similar ? 'dupe' : ''}">${esc(g.name)}${similar ? ' (looks similar!)' : ''}</li>`;
+  }).join('');
+  $('hint').innerHTML = `<b>${title}</b>` + (items ? `<ul>${items}</ul>` : ' <span class="empty">nothing yet</span>');
+}
+$('for').onchange = renderHint;
+$('name').oninput = renderHint;
+
+$('form').onsubmit = async e => {
+  e.preventDefault();
+  const r = await sb.from('gifts').insert({
+    recipient_id: $('for').value,
+    posted_by: me.id,
+    name: $('name').value.trim(),
+    link: $('link').value.trim() || null,
+    notes: $('notes').value.trim() || null
+  });
+  if(r.error){ alert(r.error.message); return; }
+  $('name').value = $('link').value = $('notes').value = '';
+  await refresh();
+};
+
+function giftHTML(g, shopping){
+  const b = shopping ? buyOf(g.id) : null;
+  const locked = b && b.buyer_id !== me.id;
+  return `<div class="gift ${b ? 'done' : ''}">
+    ${shopping ? `<input type="checkbox" data-id="${g.id}" ${b ? 'checked' : ''} ${locked ? 'disabled' : ''} title="Mark as bought">` : '<span>🎁</span>'}
+    <div class="grow">
+      <div class="name">${esc(g.name)}</div>
+      ${safeLink(g.link) ? `<a href="${esc(g.link)}" target="_blank" rel="noopener">View link</a>` : ''}
+      ${g.notes ? `<div class="notes">${esc(g.notes)}</div>` : ''}
+      ${b ? `<div class="by">Bought by ${b.buyer_id === me.id ? 'you' : esc(nameOf(b.buyer_id))}</div>` : ''}
+    </div>
+    ${g.posted_by === me.id ? `<button class="x" data-del="${g.id}" title="Remove this idea">✕</button>` : ''}
+  </div>`;
+}
+
+function renderLists(){
+  const mine = visibleFor(me.id);
+  $('mine').innerHTML = mine.length ? mine.map(g => giftHTML(g, false)).join('')
+    : '<span class="empty">You have not added any ideas for yourself yet.</span>';
+
+  $('others').innerHTML = profiles.filter(p => p.id !== me.id).map(p => {
+    const list = visibleFor(p.id);
+    return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` +
+      (list.length ? list.map(g => giftHTML(g, true)).join('') : '<span class="empty">No ideas yet. Add one!</span>') +
+      '</div>';
+  }).join('');
+}
+
+// bought checkbox
+$('others').addEventListener('change', async e => {
+  const cb = e.target.closest('input[data-id]');
+  if(!cb) return;
+  const id = Number(cb.dataset.id);
+  const r = cb.checked
+    ? await sb.from('purchases').insert({ gift_id: id, buyer_id: me.id })
+    : await sb.from('purchases').delete().eq('gift_id', id);
+  if(r.error) alert(r.error.message);
+  await refresh();
+});
+
+// remove an idea you posted
+$('app').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-del]');
+  if(!b || !confirm('Remove this idea?')) return;
+  const r = await sb.from('gifts').delete().eq('id', Number(b.dataset.del));
+  if(r.error) alert(r.error.message);
+  await refresh();
+});
+
+// pick up new ideas when someone returns to the tab
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && me && !$('app').classList.contains('hidden')) refresh();
+});
+</script>
+</body>
+</html>
