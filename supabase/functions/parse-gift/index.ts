@@ -1,4 +1,4 @@
-// parse-gift: turns a casual note into the four gift form fields.
+// parse-gift: turns a casual note into the gift form fields.
 // Runs as a Supabase Edge Function. Needs one secret: ANTHROPIC_API_KEY.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -21,13 +21,13 @@ const SYSTEM = `You fill in a form for a family Christmas gift ideas website. A 
 
 You are given the current user, the family list, and the note.
 
-recipient: The family member the gift is for. Choose only from the family list. Match nicknames, short forms, misspellings and any capitalization (for example "alex" matches Alexander). If the note says the gift is for the current user (for example "me", "myself", "I want", "I'd like", "my list"), use the current user's name. Return an empty string if the note does not say who it is for, if it names someone who is not on the list, or if it names more than one person. Do not guess from words like "mom", "dad" or "my brother".
+recipients: The family members the gift is for, as a list. Choose only from the family list. Match nicknames, short forms, misspellings and any capitalization (for example "alex" matches Alexander). If the note says the gift is for the current user (for example "me", "myself", "I want", "I'd like", "my list"), include the current user's name. A note can name several people ("for casey and riley", "me and alex"); include each one once. Return an empty list if the note does not say who it is for, or if any person it names is not on the list. Do not guess from words like "mom", "dad" or "my brother", and do not turn "everyone", "the kids" or "the family" into names.
 
 gift: A short label for the item, 2 to 5 words, naming what it is rather than describing it. Lead with the thing (or the topic, for a book), not the occasion, the person or the reasons. Drop all framing like "a good gift for X could be", "I think", "maybe", "get her". Keep a brand or model if stated. Leave size, color and price out; they belong in notes. If the note is only a link and the item is obvious from readable words in the link, use that; otherwise return an empty string. Never invent an item.
 
 link: A web address that appears in the note, copied exactly. If it starts with www., add https:// in front. If the note has no web address, return an empty string. Never make up or guess a link. If there are several, use the first one that looks like a product page.
 
-notes: The rest of the note, kept close to the writer's own words. Keep the details, reasons, preferences, caveats and personality (for example "not a must, just an idea", "I suspect hard to find", "has been really into..."). Cut only what the gift field already says and pure filler like "I think a great idea for X is". Write short natural sentences in the writer's voice, fixing obvious typos but not rephrasing into formal language. If the note is short, the notes can be short. Never add details, suggestions or reasons that the note does not contain. Stay under 900 characters. Return an empty string only if the note has nothing beyond the item itself.
+notes: The rest of the note, kept close to the writer's own words. Keep the details, reasons, preferences, caveats and personality (for example "not a must, just an idea", "I suspect hard to find", "has been really into..."). Cut only what the gift field already says and pure filler like "I think a great idea for X is". Write short natural sentences in the writer's voice, fixing obvious typos but not rephrasing into formal language. If the note is short, the notes can be short. Leave out the names of the people it is for, since the form already records them. Never add details, suggestions or reasons that the note does not contain. Stay under 900 characters. Return an empty string only if the note has nothing beyond the item itself.
 
 extra_ideas: How many other separate gift ideas the note contains besides the one you filled in. Use 0 when there is only one. Fill in the first idea only.
 
@@ -36,34 +36,37 @@ Write in plain words and never use em dashes.
 Examples (family: Taylor, Jordan, Morgan, Alexander, Casey, Riley; current user: Taylor)
 
 Note: morgan would love a cozy wool scarf, deep green
-Result: recipient Morgan; gift "Cozy wool scarf"; link ""; notes "Would love it in deep green"; extra_ideas 0
+Result: recipients [Morgan]; gift "Cozy wool scarf"; link ""; notes "Would love it in deep green"; extra_ideas 0
 
 Note: i think a great idea for morgan is a new at home coat for maine, not a must just an idea!
-Result: recipient Morgan; gift "At home coat"; link ""; notes "New at home coat for Maine. Not a must, just an idea!"; extra_ideas 0
+Result: recipients [Morgan]; gift "At home coat"; link ""; notes "New at home coat for Maine. Not a must, just an idea!"; extra_ideas 0
 
 Note: jordan has been really into ww1 history esp around the austro-hungarian empire and the origins of the war. I think a good book on the origins could be great but it needs to be short and not super focused on the actual fighting, I suspect hard to find
-Result: recipient Jordan; gift "WW1 history / origins book"; link ""; notes "Really into WW1 history lately, especially the Austro-Hungarian Empire and the origins of the war. A good book on the origins could be great, but it needs to be short and not super focused on the actual fighting. I suspect it is hard to find."; extra_ideas 0
+Result: recipients [Jordan]; gift "WW1 history / origins book"; link ""; notes "Really into WW1 history lately, especially the Austro-Hungarian Empire and the origins of the war. A good book on the origins could be great, but it needs to be short and not super focused on the actual fighting. I suspect it is hard to find."; extra_ideas 0
 
 Note: get jordan the blue fleece jacket size L https://shop.example/fleece
-Result: recipient Jordan; gift "Fleece jacket"; link "https://shop.example/fleece"; notes "Blue, size L"; extra_ideas 0
+Result: recipients [Jordan]; gift "Fleece jacket"; link "https://shop.example/fleece"; notes "Blue, size L"; extra_ideas 0
 
 Note: for me: wireless headphones around $300
-Result: recipient Taylor; gift "Wireless headphones"; link ""; notes "Around $300"; extra_ideas 0
+Result: recipients [Taylor]; gift "Wireless headphones"; link ""; notes "Around $300"; extra_ideas 0
 
 Note: alex wants a cast iron skillet, 12 inch, maybe lodge
-Result: recipient Alexander; gift "Cast iron skillet"; link ""; notes "12 inch, maybe Lodge brand"; extra_ideas 0
+Result: recipients [Alexander]; gift "Cast iron skillet"; link ""; notes "12 inch, maybe Lodge brand"; extra_ideas 0
 
 Note: https://shop.example/products/ceramic-plant-pot
-Result: recipient ""; gift "Ceramic plant pot"; link "https://shop.example/products/ceramic-plant-pot"; notes ""; extra_ideas 0
+Result: recipients []; gift "Ceramic plant pot"; link "https://shop.example/products/ceramic-plant-pot"; notes ""; extra_ideas 0
 
 Note: board game for casey and riley
-Result: recipient ""; gift "Board game"; link ""; notes ""; extra_ideas 0
+Result: recipients [Casey, Riley]; gift "Board game"; link ""; notes ""; extra_ideas 0
+
+Note: for me and alex, a nice set of mugs, something handmade
+Result: recipients [Taylor, Alexander]; gift "Set of mugs"; link ""; notes "Something handmade"; extra_ideas 0
 
 Note: my mom would like a book about birds
-Result: recipient ""; gift "Book about birds"; link ""; notes ""; extra_ideas 0
+Result: recipients []; gift "Book about birds"; link ""; notes ""; extra_ideas 0
 
 Note: casey: slippers. also a sweater for riley
-Result: recipient Casey; gift "Slippers"; link ""; notes ""; extra_ideas 1`;
+Result: recipients [Casey]; gift "Slippers"; link ""; notes ""; extra_ideas 1`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -103,10 +106,10 @@ Deno.serve(async (req) => {
     input_schema: {
       type: 'object',
       properties: {
-        recipient: {
-          type: 'string',
-          enum: [...names, ''],
-          description: 'Family member the gift is for, or an empty string if unclear.',
+        recipients: {
+          type: 'array',
+          items: { type: 'string', enum: names },
+          description: 'Family members the gift is for, or an empty list if unclear.',
         },
         gift: { type: 'string', description: 'Short clean title of the gift, or an empty string.' },
         link: { type: 'string', description: 'Web address copied from the note, or an empty string.' },
@@ -116,7 +119,7 @@ Deno.serve(async (req) => {
         },
         extra_ideas: { type: 'integer', description: 'How many other separate gift ideas the note contains.' },
       },
-      required: ['recipient', 'gift', 'link', 'notes', 'extra_ideas'],
+      required: ['recipients', 'gift', 'link', 'notes', 'extra_ideas'],
     },
   };
 
@@ -164,7 +167,14 @@ Deno.serve(async (req) => {
   const clean = (v: unknown, max: number) =>
     String(v ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/\s+/g, ' ').trim().slice(0, max);
 
-  const recipient = names.find((n) => n.toLowerCase() === clean(raw.recipient, 60).toLowerCase()) ?? '';
+  const asked = Array.isArray(raw.recipients) ? raw.recipients : [];
+  const recipients = [
+    ...new Set(
+      asked
+        .map((r: unknown) => names.find((n) => n.toLowerCase() === clean(r, 60).toLowerCase()))
+        .filter((n: string | undefined): n is string => !!n),
+    ),
+  ].slice(0, names.length);
   const gift = clean(raw.gift, 120);
   const notes = clean(raw.notes, 1000);
 
@@ -177,7 +187,7 @@ Deno.serve(async (req) => {
 
   let problem = '';
   if (!gift && !link) problem = 'I could not find a gift idea in that. Try rephrasing, or fill it in below.';
-  else if (!recipient) problem = 'I could not tell who this is for. Pick a name below.';
+  else if (!recipients.length) problem = 'I could not tell who this is for. Pick a name below.';
 
-  return json({ recipient, gift, link, notes, extra_ideas: extra, problem });
+  return json({ recipients, gift, link, notes, extra_ideas: extra, problem });
 });
