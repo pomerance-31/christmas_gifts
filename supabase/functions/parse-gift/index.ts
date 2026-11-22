@@ -3,7 +3,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const MODEL = 'claude-haiku-5-5';
-const MAX_TEXT = 600;
+const MAX_TEXT = 1000;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 300,
+        max_tokens: 600,
         ...(withTemperature ? { temperature: 0 } : {}),
         system: SYSTEM,
         tools: [tool],
@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
 
   const recipient = names.find((n) => n.toLowerCase() === clean(raw.recipient, 60).toLowerCase()) ?? '';
   const gift = clean(raw.gift, 120);
-  const notes = clean(raw.notes, 300);
+  const notes = clean(raw.notes, 1000);
 
   // A link is only kept if it really appears in the note, so one can never be invented
   let link = clean(raw.link, 500);
