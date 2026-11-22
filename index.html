@@ -72,7 +72,11 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 .buy small{display:block;font-weight:600;opacity:.8}
 .pfrow{align-items:center;margin-bottom:10px}
 .pflabel{font-size:.85rem;font-weight:700;color:#7a6a45}
-.tab.pf{padding:3px 10px;font-size:.85rem}
+.pf{background:transparent;color:var(--dark);border:1px solid #b8a674;border-radius:8px;padding:2px 9px;font-size:.82rem;font-weight:600}
+.pf:hover{background:#f3ead2}
+.pf.on{background:#f3ead2;border-color:var(--dark);font-weight:700}
+.pfnote{font-size:.85rem;margin:-4px 0 10px;color:#5c4d28}
+.pfnote a{color:var(--red);font-weight:700}
 .gift .x{background:transparent;color:#999;padding:0 6px;font-size:1rem;align-self:flex-start}
 .gift .x:hover{background:transparent;color:var(--red)}
 .empty{opacity:.6;font-style:italic}
@@ -535,15 +539,18 @@ function posterRow(list){
   const ids = profiles.map(p => p.id).filter(id => list.some(g => g.posted_by === id));
   if(postedBy !== 'all' && !ids.includes(postedBy)) postedBy = 'all';
   if(ids.length < 2) return '';
-  const chip = (id, label, n) => `<button type="button" class="tab pf ${postedBy === id ? 'on' : ''}" data-poster="${id}">${label}${n === null ? '' : ` <small>${n}</small>`}</button>`;
-  return `<div class="tabs pfrow"><span class="pflabel">Posted by:</span>` + chip('all', 'All', null)
-    + ids.map(id => chip(id, id === me.id ? 'You' : esc(nameOf(id)), list.filter(g => g.posted_by === id).length)).join('') + '</div>';
+  const chip = (id, label, n) => `<button type="button" class="pf ${postedBy === id ? 'on' : ''}" data-poster="${id}">${label}${n === null ? '' : ` <small>${n}</small>`}</button>`;
+  const note = postedBy === 'all' ? ''
+    : `<div class="pfnote">Showing only ideas posted by ${postedBy === me.id ? 'you' : esc(nameOf(postedBy))}. <a href="#" data-poster="all">Show all</a></div>`;
+  return `<div class="tabs pfrow"><span class="pflabel">🔎 Filter by who posted:</span>` + chip('all', 'All', null)
+    + ids.map(id => chip(id, id === me.id ? 'You' : esc(nameOf(id)), list.filter(g => g.posted_by === id).length)).join('') + '</div>' + note;
 }
 const byPoster = list => postedBy === 'all' ? list : list.filter(g => g.posted_by === postedBy);
 
 $('others').addEventListener('click', e => {
-  const b = e.target.closest('button[data-poster]');
+  const b = e.target.closest('[data-poster]');
   if(!b) return;
+  e.preventDefault();
   postedBy = b.dataset.poster;
   renderLists();
 });
