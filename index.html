@@ -98,6 +98,9 @@ button:disabled{opacity:.6;cursor:default}
 .addtoggle:hover{background:transparent}
 #addbody{margin-top:12px}
 .people.single{grid-template-columns:1fr}
+.edit input,.edit textarea{margin-bottom:6px}
+.editbtns button{padding:6px 14px}
+.editbtns button.ghost{color:var(--dark);border-color:#cdb98a}
 @media(max-width:560px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -387,7 +390,19 @@ $('form').onsubmit = async e => {
   await refresh();
 };
 
+let editing = null; // id of the idea being edited
+
+function editHTML(g){
+  return `<div class="gift"><span>✏️</span><div class="grow edit">
+    <input data-e="name" maxlength="120" value="${esc(g.name)}" placeholder="Gift">
+    <input data-e="link" type="url" value="${esc(g.link || '')}" placeholder="Link (optional)">
+    <textarea data-e="notes" rows="2" maxlength="300" placeholder="Notes (optional)">${esc(g.notes || '')}</textarea>
+    <div class="editbtns"><button type="button" data-save="${g.id}">Save</button> <button type="button" class="ghost" data-cancel="1">Cancel</button></div>
+  </div></div>`;
+}
+
 function giftHTML(g, shopping){
+  if(editing === g.id) return editHTML(g);
   const b = shopping ? buyOf(g.id) : null;
   const locked = b && b.buyer_id !== me.id;
   return `<div class="gift ${b ? 'done' : ''}">
@@ -400,7 +415,7 @@ function giftHTML(g, shopping){
       ${b ? `<div class="by">Bought by ${b.buyer_id === me.id ? 'you' : esc(nameOf(b.buyer_id))}</div>` : ''}
       ${shopping ? socialHTML(g) : ''}
     </div>
-    ${g.posted_by === me.id ? `<button class="x" data-del="${g.id}" title="Remove this idea">✕</button>` : ''}
+    ${g.posted_by === me.id ? `<button class="x" data-edit="${g.id}" title="Edit this idea">✎</button><button class="x" data-del="${g.id}" title="Remove this idea">✕</button>` : ''}
   </div>`;
 }
 
@@ -501,6 +516,29 @@ $('others').addEventListener('change', async e => {
   await refresh();
 });
 
+// edit an idea you posted
+$('app').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-edit], button[data-cancel], button[data-save]');
+  if(!b) return;
+  if(b.dataset.edit){ editing = Number(b.dataset.edit); renderLists(); return; }
+  if(b.dataset.cancel){ editing = null; renderLists(); return; }
+  const row = b.closest('.gift');
+  const val = k => row.querySelector(`[data-e="${k}"]`).value.trim();
+  const name = val('name'), link = val('link');
+  if(!name){ alert('The gift needs a name.'); return; }
+  if(link && !safeLink(link)){ alert('The link should start with http:// or https://'); return; }
+  b.disabled = true;
+  const r = await sb.from('gifts').update({ name, link: link || null, notes: val('notes') || null })
+    .eq('id', Number(b.dataset.save)).select();
+  if(r.error || !r.data || !r.data.length){
+    alert(r.error ? r.error.message : 'Could not save that change.');
+    b.disabled = false;
+    return;
+  }
+  editing = null;
+  await refresh();
+});
+
 // remove an idea you posted
 $('app').addEventListener('click', async e => {
   const b = e.target.closest('button[data-del]');
@@ -571,7 +609,7 @@ $('others').addEventListener('click', async e => {
 
 // pick up new ideas when someone returns to the tab
 document.addEventListener('visibilitychange', () => {
-  if(!document.hidden && me && !$('app').classList.contains('hidden')) refresh();
+  if(!document.hidden && me && editing === null && !$('app').classList.contains('hidden')) refresh();
 });
 </script>
 </body>
