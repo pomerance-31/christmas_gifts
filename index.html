@@ -111,6 +111,11 @@ button:disabled{opacity:.6;cursor:default}
 #addbody{margin-top:12px}
 .people.single{grid-template-columns:1fr}
 .people .wide{grid-column:1/-1}
+.famrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.famname,.famrow select{font-family:'Lobster',Georgia,serif;font-weight:400;font-size:1.5rem;color:var(--gold)}
+.famrow select{width:auto;background:rgba(255,255,255,.12);border:2px solid var(--gold);border-radius:999px;padding:2px 14px}
+.famrow select option{color:var(--dark);font-family:'Nunito',sans-serif;font-size:1rem}
+.famhint{color:#cfe8d6;font-size:.8rem}
 .cols.withcats{display:grid;grid-template-columns:210px minmax(0,1fr);gap:16px;align-items:start}
 .cats{padding:14px}
 .cats:empty{display:none}
@@ -171,6 +176,11 @@ button:disabled{opacity:.6;cursor:default}
 
 <!-- APP -->
 <div class="wrap hidden" id="app">
+  <div class="famrow">
+    <span class="famname" id="famName"></span>
+    <select id="famSel" class="hidden" aria-label="Switch family"></select>
+    <span class="famhint hidden" id="famHint">tap to switch families</span>
+  </div>
   <div class="top">
     <h1><span id="myicon">🎅</span> <span id="hi"></span>'s Gift Ideas</h1>
     <button class="ghost" id="logout">Log out</button>
@@ -246,7 +256,7 @@ if(SUPABASE_URL.startsWith('PASTE')){
 }
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let me = null, profiles = [], gifts = [], buys = [], votes = [], comments = [], commentLikes = [], pick = ICONS[0];
+let me = null, allProfiles = [], families = [], famId = null, myEmail = '', profiles = [], gifts = [], buys = [], votes = [], comments = [], commentLikes = [], pick = ICONS[0];
 const openThreads = new Set(), drafts = {};
 let passwordPending = LINK_TYPE === 'recovery';
 
@@ -275,16 +285,29 @@ $('forChips').addEventListener('click', e => {
 });
 const safeLink = u => /^https?:\/\//i.test(u || '');
 
+const memberships = () => allProfiles.filter(p => p.email && p.email.toLowerCase() === myEmail);
+const savedFam = () => { try{ return localStorage.getItem('giftFamily'); }catch(_){ return null; } };
+
+// Loads the family list, picks which family you are looking at, then loads that family's ideas.
 async function loadData(){
-  const [p, g, b, v, c, l] = await Promise.all([
+  const [p, f] = await Promise.all([
     sb.from('profiles').select('*').order('name'),
-    sb.from('gifts').select('*').order('created_at'),
+    sb.from('families').select('*').order('name')
+  ]);
+  allProfiles = p.data || []; families = f.data || [];
+  const mem = memberships();
+  if(!mem.some(m => m.family_id === famId)) famId = (mem.find(m => m.family_id === savedFam()) || mem[0] || {}).family_id || null;
+  me = mem.find(m => m.family_id === famId) || null;
+  profiles = allProfiles.filter(x => x.family_id === famId);
+  if(!me){ gifts = []; buys = []; votes = []; comments = []; commentLikes = []; return; }
+  const [g, b, v, c, l] = await Promise.all([
+    sb.from('gifts').select('*').eq('family_id', famId).order('created_at'),
     sb.from('purchases').select('*'),
     sb.from('votes').select('*'),
     sb.from('comments').select('*').order('created_at'),
     sb.from('comment_likes').select('*')
   ]);
-  profiles = p.data || []; gifts = g.data || []; buys = b.data || [];
+  gifts = g.data || []; buys = b.data || [];
   votes = v.data || []; comments = c.data || []; commentLikes = l.data || [];
 }
 async function refresh(){ await loadData(); renderHint(); renderLists(); }
@@ -305,10 +328,10 @@ sb.auth.onAuthStateChange((event, session) => {
 });
 
 async function route(session){
-  const sameUser = me && session.user.email.toLowerCase() === me.email.toLowerCase();
+  const sameUser = me && session.user.email.toLowerCase() === myEmail;
   if(sameUser && !$('app').classList.contains('hidden')){ await refresh(); return; }
+  myEmail = session.user.email.toLowerCase();
   await loadData();
-  me = profiles.find(p => p.email.toLowerCase() === session.user.email.toLowerCase());
   if(!me){
     await sb.auth.signOut();
     msg('loginMsg', 'That email is not on the family list.');
@@ -327,8 +350,27 @@ function showSetup(){
     : 'Choose a new password. 🎁';
 }
 
+function renderFamily(){
+  const mine = memberships().map(m => families.find(f => f.id === m.family_id)).filter(Boolean);
+  const cur = families.find(f => f.id === famId);
+  const sel = $('famSel');
+  $('famName').classList.toggle('hidden', mine.length > 1);
+  $('famName').textContent = cur ? `🏠 ${cur.name} family` : '';
+  sel.classList.toggle('hidden', mine.length < 2);
+  $('famHint').classList.toggle('hidden', mine.length < 2);
+  sel.innerHTML = mine.map(f => `<option value="${f.id}" ${f.id === famId ? 'selected' : ''}>🏠 ${esc(f.name)} family</option>`).join('');
+}
+$('famSel').onchange = async () => {
+  famId = $('famSel').value;
+  try{ localStorage.setItem('giftFamily', famId); localStorage.setItem('giftView', 'all'); }catch(_){}
+  view = 'all'; postedBy = 'all'; catFilter = 'all'; editing = null; openThreads.clear();
+  await loadData();
+  enterApp();
+};
+
 function enterApp(){
   show('app');
+  renderFamily();
   $('hi').textContent = me.name;
   $('myicon').textContent = iconOf(me);
   const other = profiles.find(p => p.id !== me.id) || me;
@@ -368,7 +410,6 @@ $('savesetup').onclick = async () => {
   $('npw').value = $('npw2').value = '';
   msg('setupMsg', '');
   await loadData();
-  me = profiles.find(p => p.id === me.id);
   enterApp();
 };
 
@@ -400,7 +441,7 @@ async function quickFill(){
   $('fill').disabled = true;
   say('Reading your note...');
   try{
-    const { data, error } = await sb.functions.invoke('parse-gift', { body: { text } });
+    const { data, error } = await sb.functions.invoke('parse-gift', { body: { text, family_id: famId } });
     if(error || !data || data.error){
       let m = (data && data.error) || null;
       if(!m && error && error.context && error.context.json){
@@ -432,6 +473,7 @@ $('form').onsubmit = async e => {
   e.preventDefault();
   if(!chosen.size){ alert('Pick who it is for.'); return; }
   const r = await sb.from('gifts').insert({
+    family_id: famId,
     recipient_ids: [...chosen],
     posted_by: me.id,
     name: $('name').value.trim(),
