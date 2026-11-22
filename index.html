@@ -98,6 +98,9 @@ button:disabled{opacity:.6;cursor:default}
 .addtoggle:hover{background:transparent}
 #addbody{margin-top:12px}
 .people.single{grid-template-columns:1fr}
+.people .wide{grid-column:1/-1}
+.forchips{display:flex;flex-wrap:wrap;gap:6px}
+.forline{font-size:.8rem;font-weight:700;color:var(--green)}
 .edit input,.edit textarea{margin-bottom:6px}
 .editbtns button{padding:6px 14px}
 .editbtns button.ghost{color:var(--dark);border-color:#cdb98a}
@@ -161,8 +164,8 @@ button:disabled{opacity:.6;cursor:default}
     </div>
     <div class="or">or fill it in yourself</div>
     <form id="form" class="grid2">
-      <div><label for="for">Who is it for?</label><select id="for"></select></div>
-      <div><label for="name">Gift</label><input id="name" required maxlength="120" placeholder="e.g., a Rolex"></div>
+      <div class="full"><label>Who is it for? (tick one or more)</label><div class="forchips" id="forChips"></div></div>
+      <div class="full"><label for="name">Gift</label><input id="name" required maxlength="120" placeholder="e.g., a Rolex"></div>
       <div class="full"><label for="link">Link (optional)</label><input id="link" type="url" placeholder="https://"></div>
       <div class="full"><label for="notes">Notes (optional)</label><textarea id="notes" rows="2" maxlength="1000" placeholder="Size, color, etc."></textarea></div>
       <div class="full hint" id="hint"></div>
@@ -219,7 +222,26 @@ let passwordPending = LINK_TYPE === 'recovery';
 const iconOf = p => p.icon || '🎁';
 const nameOf = id => (profiles.find(p => p.id === id) || {}).name || '?';
 const buyOf = id => buys.find(b => b.gift_id === id);
-const visibleFor = pid => gifts.filter(g => g.recipient_id === pid);
+const visibleFor = pid => gifts.filter(g => g.recipient_ids.includes(pid));
+const isShared = g => g.recipient_ids.length > 1;
+const forMe = g => g.recipient_ids.includes(me.id);
+const sharedOthers = () => gifts.filter(g => isShared(g) && !forMe(g));
+const byVotes = (a, b) => votes.filter(v => v.gift_id === b.id).length - votes.filter(v => v.gift_id === a.id).length;
+const forNames = g => g.recipient_ids.map(id => id === me.id ? 'you' : nameOf(id)).join(' + ');
+
+// who the add form is for (a set of profile ids)
+let chosen = new Set();
+function renderChips(){
+  $('forChips').innerHTML = profiles.map(p =>
+    `<button type="button" class="tab ${chosen.has(p.id) ? 'on' : ''}" data-who="${p.id}">${p.id === me.id ? 'Myself' : esc(p.name)}</button>`).join('');
+}
+function setChosen(ids){ chosen = new Set(ids); renderChips(); renderHint(); }
+$('forChips').addEventListener('click', e => {
+  const b = e.target.closest('button[data-who]');
+  if(!b) return;
+  if(chosen.has(b.dataset.who)) chosen.delete(b.dataset.who); else chosen.add(b.dataset.who);
+  renderChips(); renderHint();
+});
 const safeLink = u => /^https?:\/\//i.test(u || '');
 
 async function loadData(){
@@ -278,9 +300,9 @@ function enterApp(){
   show('app');
   $('hi').textContent = me.name;
   $('myicon').textContent = iconOf(me);
-  $('for').innerHTML = profiles.map(p => `<option value="${p.id}">${p.id === me.id ? 'Myself' : esc(p.name)}</option>`).join('');
   const other = profiles.find(p => p.id !== me.id) || me;
-  $('for').value = other.id;
+  chosen = new Set([other.id]);
+  renderChips();
   $('quick').placeholder = 'e.g., a cozy wool scarf for ' + other.name + ', dark green, https://...';
   renderHint(); renderLists();
 }
@@ -323,17 +345,18 @@ $('logout').onclick = () => sb.auth.signOut();
 
 // duplicate check: shows the list for whoever is selected and flags similar names
 function renderHint(){
-  const pid = $('for').value;
   const typed = $('name').value.trim().toLowerCase();
-  const title = pid === me.id ? 'Already on your list:' : `Already on ${esc(nameOf(pid))}'s list:`;
-  const items = visibleFor(pid).map(g => {
-    const n = g.name.toLowerCase();
-    const similar = typed.length > 2 && (n.includes(typed) || typed.includes(n));
-    return `<li class="${similar ? 'dupe' : ''}">${esc(g.name)}${similar ? ' (looks similar!)' : ''}</li>`;
-  }).join('');
-  $('hint').innerHTML = `<b>${title}</b>` + (items ? `<ul>${items}</ul>` : ' <span class="empty">nothing yet</span>');
+  const blocks = [...chosen].map(pid => {
+    const title = pid === me.id ? 'Already on your list:' : `Already on ${esc(nameOf(pid))}'s list:`;
+    const items = visibleFor(pid).map(g => {
+      const n = g.name.toLowerCase();
+      const similar = typed.length > 2 && (n.includes(typed) || typed.includes(n));
+      return `<li class="${similar ? 'dupe' : ''}">${esc(g.name)}${similar ? ' (looks similar!)' : ''}</li>`;
+    }).join('');
+    return `<div><b>${title}</b>` + (items ? `<ul>${items}</ul>` : ' <span class="empty">nothing yet</span>') + '</div>';
+  });
+  $('hint').innerHTML = blocks.join('') || '<span class="empty">Pick who it is for above.</span>';
 }
-$('for').onchange = renderHint;
 $('name').oninput = renderHint;
 
 // Quick add: turn a casual note into the form fields
@@ -355,8 +378,8 @@ async function quickFill(){
       say(m || 'The helper is unavailable right now. You can fill it in below.', true);
       return;
     }
-    const person = profiles.find(p => p.name === data.recipient);
-    if(person){ $('for').value = person.id; glow($('for')); }
+    const picked = profiles.filter(p => (data.recipients || []).includes(p.name));
+    if(picked.length){ setChosen(picked.map(p => p.id)); glow($('forChips')); }
     [['name', data.gift], ['link', data.link], ['notes', data.notes]].forEach(([id, v]) => {
       $(id).value = v || '';
       if(v) glow($(id));
@@ -376,8 +399,9 @@ $('quick').onkeydown = e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDef
 
 $('form').onsubmit = async e => {
   e.preventDefault();
+  if(!chosen.size){ alert('Pick who it is for.'); return; }
   const r = await sb.from('gifts').insert({
-    recipient_id: $('for').value,
+    recipient_ids: [...chosen],
     posted_by: me.id,
     name: $('name').value.trim(),
     link: $('link').value.trim() || null,
@@ -409,6 +433,7 @@ function giftHTML(g, shopping){
     ${shopping ? `<input type="checkbox" data-id="${g.id}" ${b ? 'checked' : ''} ${locked ? 'disabled' : ''} title="Mark as bought">` : '<span>🎁</span>'}
     <div class="grow">
       <div class="name">${esc(g.name)}</div>
+      ${isShared(g) ? `<div class="forline">👥 For ${esc(forNames(g))}</div>` : ''}
       ${safeLink(g.link) ? `<a href="${esc(g.link)}" target="_blank" rel="noopener">View link</a>` : ''}
       ${g.notes ? `<div class="notes">${esc(g.notes)}</div>` : ''}
       ${shopping ? `<div class="posted">Posted by ${g.posted_by === me.id ? 'you' : esc(nameOf(g.posted_by))}</div>` : ''}
@@ -460,11 +485,12 @@ let view = 'all';
 try{ view = localStorage.getItem('giftView') || 'all'; }catch(_){}
 
 function renderTabs(){
-  if(view !== 'all' && !profiles.some(p => p.id === view)) view = 'all';
+  if(view !== 'all' && view !== 'shared' && !profiles.some(p => p.id === view)) view = 'all';
   const one = (id, label, n) => `<button type="button" class="tab ${view === id ? 'on' : ''}" data-view="${id}">${label}${n === null ? '' : ` <small>${n}</small>`}</button>`;
   $('tabs').innerHTML = one('all', '🎄 Everyone', null)
+    + one('shared', '👥 Shared', sharedOthers().length)
     + one(me.id, '🎅 My list', visibleFor(me.id).length)
-    + profiles.filter(p => p.id !== me.id).map(p => one(p.id, `${iconOf(p)} ${esc(p.name)}`, visibleFor(p.id).length)).join('');
+    + profiles.filter(p => p.id !== me.id).map(p => one(p.id, `${iconOf(p)} ${esc(p.name)}`, visibleFor(p.id).filter(g => !forMe(g)).length)).join('');
 }
 
 $('tabs').addEventListener('click', e => {
@@ -472,7 +498,7 @@ $('tabs').addEventListener('click', e => {
   if(!b) return;
   view = b.dataset.view;
   try{ localStorage.setItem('giftView', view); }catch(_){}
-  if(view !== 'all'){ $('for').value = view; renderHint(); }
+  if(view !== 'all' && view !== 'shared') setChosen([view]);
   renderLists();
 });
 
@@ -496,12 +522,21 @@ function renderLists(){
   $('mine').innerHTML = mine.length ? mine.map(g => giftHTML(g, false)).join('')
     : '<span class="empty">You have not added any ideas for yourself yet.</span>';
 
-  $('others').innerHTML = profiles.filter(p => p.id !== me.id && (view === 'all' || p.id === view)).map(p => {
-    const list = visibleFor(p.id).sort((a, b) => votes.filter(v => v.gift_id === b.id).length - votes.filter(v => v.gift_id === a.id).length);
+  const people = profiles.filter(p => p.id !== me.id && (view === 'all' || p.id === view));
+  let html = people.map(p => {
+    // Everyone view: only ideas for this person alone (shared ones have their own card). One person's tab: all of theirs.
+    const list = visibleFor(p.id).filter(g => !forMe(g) && (view !== 'all' || !isShared(g))).sort(byVotes);
     return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` +
       (list.length ? list.map(g => giftHTML(g, true)).join('') : '<span class="empty">No ideas yet. Add one!</span>') +
       '</div>';
   }).join('');
+  const shared = sharedOthers().sort(byVotes);
+  if(view === 'shared' || (view === 'all' && shared.length)){
+    html += `<div class="card person wide"><h3>👥 Shared gifts</h3>` +
+      (shared.length ? shared.map(g => giftHTML(g, true)).join('') : '<span class="empty">No shared ideas yet. Tick two or more names when you add one.</span>') +
+      '</div>';
+  }
+  $('others').innerHTML = html;
 }
 
 // bought checkbox
