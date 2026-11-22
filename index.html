@@ -71,6 +71,9 @@ label{font-weight:700;font-size:.9rem;display:block;margin-bottom:4px}
 .buy.on{background:#e3f3e6;border:2px solid var(--green);border-radius:10px;padding:6px 10px;color:var(--green)}
 .buy small{display:block;font-weight:600;opacity:.8}
 .catshead.second{margin-top:14px}
+.catreset{background:transparent;color:var(--red);border:0;padding:0 0 8px;font-size:.85rem;font-weight:700;text-decoration:underline}
+.catreset:hover{background:transparent;color:#d02a36}
+.catreset:disabled{opacity:.35;text-decoration:none;cursor:default}
 .gift .x{background:transparent;color:#999;padding:0 6px;font-size:1rem;align-self:flex-start}
 .gift .x:hover{background:transparent;color:var(--red)}
 .empty{opacity:.6;font-style:italic}
@@ -576,7 +579,8 @@ function renderCats(scope, name){
   if(!useCats && !usePosters){ off(); return; }
   const names = Object.keys(catCounts).sort((a, b) => catCounts[b] - catCounts[a] || a.localeCompare(b));
   const btn = (attr, val, on, label, n) => `<button type="button" class="catbtn ${on ? 'on' : ''}" ${attr}="${esc(val)}"><span>${esc(label)}</span><small>${n}</small></button>`;
-  let html = '';
+  const active = catFilter !== 'all' || postedBy !== 'all';
+  let html = `<button type="button" class="catreset" data-reset="1" ${active ? '' : 'disabled'}>✕ Reset filters</button>`;
   if(useCats){
     html += `<div class="catshead">Categories</div><div class="catsub">AI generated from ${esc(name)}</div><div class="catlist">`
       + (hasCats
@@ -596,9 +600,11 @@ function renderCats(scope, name){
 }
 
 $('cats').addEventListener('click', e => {
-  const b = e.target.closest('button[data-cat], button[data-poster]');
+  const b = e.target.closest('button[data-cat], button[data-poster], button[data-reset]');
   if(!b) return;
-  if(b.dataset.cat !== undefined) catFilter = b.dataset.cat; else postedBy = b.dataset.poster;
+  if(b.dataset.reset){ catFilter = 'all'; postedBy = 'all'; }
+  else if(b.dataset.cat !== undefined) catFilter = b.dataset.cat;
+  else postedBy = b.dataset.poster;
   renderLists();
 });
 
