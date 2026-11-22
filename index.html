@@ -89,6 +89,15 @@ button:disabled{opacity:.6;cursor:default}
 .cmform{display:flex;gap:6px;margin-top:6px}
 .cmform input{padding:6px 8px;font-size:.88rem}
 .cmform button{padding:6px 12px;font-size:.88rem}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.tab{background:#fff;color:var(--dark);border:2px solid var(--gold);border-radius:999px;padding:6px 14px;font-size:.95rem}
+.tab:hover{background:#fff3d6}
+.tab.on{background:var(--red);color:#fff;border-color:#fff}
+.tab small{opacity:.7;font-weight:700;margin-left:2px}
+.addtoggle{width:100%;text-align:left;background:transparent;color:var(--red);font-family:'Mountains of Christmas',Georgia,serif;font-size:1.5rem;padding:0}
+.addtoggle:hover{background:transparent}
+#addbody{margin-top:12px}
+.people.single{grid-template-columns:1fr}
 @media(max-width:560px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -134,8 +143,11 @@ button:disabled{opacity:.6;cursor:default}
   </div>
   <div class="stripe"></div>
 
+  <div class="tabs" id="tabs"></div>
+
   <div class="card">
-    <h2 style="color:var(--red);margin-bottom:12px">🎁 Add a gift idea</h2>
+    <button type="button" class="addtoggle" id="toggleAdd" aria-expanded="false">🎁 Add a gift idea ▸</button>
+    <div id="addbody" class="hidden">
     <div class="quick">
       <label for="quick">✨ Quick add: type it in your own words</label>
       <textarea id="quick" rows="2" maxlength="500"></textarea>
@@ -153,12 +165,13 @@ button:disabled{opacity:.6;cursor:default}
       <div class="full hint" id="hint"></div>
       <div class="full"><button type="submit">Add idea ⭐</button></div>
     </form>
+    </div>
   </div>
 
-  <h2 class="section-title">🎄 My list</h2>
+  <h2 class="section-title" id="mineTitle">🎄 My list</h2>
   <div class="card" id="mine"></div>
 
-  <h2 class="section-title">🎁 Everyone else</h2>
+  <h2 class="section-title" id="othersTitle">🎁 Everyone else</h2>
   <div class="people" id="others"></div>
 </div>
 
@@ -427,12 +440,48 @@ async function refreshSocial(){
   renderLists();
 }
 
+// which list is showing: 'all', or one person's id (including mine)
+let view = 'all';
+try{ view = localStorage.getItem('giftView') || 'all'; }catch(_){}
+
+function renderTabs(){
+  if(view !== 'all' && !profiles.some(p => p.id === view)) view = 'all';
+  const one = (id, label, n) => `<button type="button" class="tab ${view === id ? 'on' : ''}" data-view="${id}">${label}${n === null ? '' : ` <small>${n}</small>`}</button>`;
+  $('tabs').innerHTML = one('all', '🎄 Everyone', null)
+    + one(me.id, '🎅 My list', visibleFor(me.id).length)
+    + profiles.filter(p => p.id !== me.id).map(p => one(p.id, `${iconOf(p)} ${esc(p.name)}`, visibleFor(p.id).length)).join('');
+}
+
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button[data-view]');
+  if(!b) return;
+  view = b.dataset.view;
+  try{ localStorage.setItem('giftView', view); }catch(_){}
+  if(view !== 'all'){ $('for').value = view; renderHint(); }
+  renderLists();
+});
+
+$('toggleAdd').onclick = () => {
+  const open = $('addbody').classList.toggle('hidden') === false;
+  $('toggleAdd').setAttribute('aria-expanded', open);
+  $('toggleAdd').textContent = open ? '🎁 Add a gift idea ▾' : '🎁 Add a gift idea ▸';
+};
+
 function renderLists(){
+  renderTabs();
+  const showMine = view === 'all' || view === me.id;
+  const showOthers = view !== me.id;
+  $('mineTitle').classList.toggle('hidden', !showMine);
+  $('mine').classList.toggle('hidden', !showMine);
+  $('othersTitle').classList.toggle('hidden', view !== 'all');
+  $('others').classList.toggle('hidden', !showOthers);
+  $('others').classList.toggle('single', view !== 'all');
+
   const mine = visibleFor(me.id);
   $('mine').innerHTML = mine.length ? mine.map(g => giftHTML(g, false)).join('')
     : '<span class="empty">You have not added any ideas for yourself yet.</span>';
 
-  $('others').innerHTML = profiles.filter(p => p.id !== me.id).map(p => {
+  $('others').innerHTML = profiles.filter(p => p.id !== me.id && (view === 'all' || p.id === view)).map(p => {
     const list = visibleFor(p.id).sort((a, b) => votes.filter(v => v.gift_id === b.id).length - votes.filter(v => v.gift_id === a.id).length);
     return `<div class="card person"><h3>${iconOf(p)} ${esc(p.name)}</h3>` +
       (list.length ? list.map(g => giftHTML(g, true)).join('') : '<span class="empty">No ideas yet. Add one!</span>') +
