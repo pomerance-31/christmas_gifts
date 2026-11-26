@@ -240,7 +240,8 @@ const SUPABASE_URL = 'https://yjqfxqulfrpkkmekjbcv.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_Q-vTvlUIKHXKQ37mnlU3Fg_5ZM75CCI';
 
 const ICONS = ['🎅','🤶','🦌','⛄','🎄','⭐','🎁','🔔','🍪','🧦','🧝','🐻‍❄️'];
-const LINK_TYPE = (location.hash.match(/type=(\w+)/) || [])[1]; // "invite" or "recovery", read before Supabase clears it
+const LINK = new URLSearchParams(location.hash.slice(1)); // read before Supabase clears it
+const LINK_TYPE = LINK.get('type'); // "invite" or "recovery" (the link also carries token_type, so match the name exactly)
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -336,7 +337,10 @@ $('icons').onclick = e => {
 };
 
 // auth
+if(LINK.get('error')) msg('loginMsg', 'That link has expired or was already used. Type your email and tap "Forgot password?" for a new one.');
+
 sb.auth.onAuthStateChange((event, session) => {
+  if(event === 'PASSWORD_RECOVERY') passwordPending = true;
   if(event === 'SIGNED_OUT' || !session){ me = null; show('loginScreen'); return; }
   setTimeout(() => route(session), 0); // outside the callback so Supabase calls do not deadlock
 });
