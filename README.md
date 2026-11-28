@@ -13,6 +13,8 @@ A small private site where families share Christmas gift ideas for each other. E
 - **Categories:** on a person's tab and the Shared tab, a sidebar lists AI generated categories for that list (Books, Clothing and so on) with counts, and clicking one filters the list. On a phone it becomes a row of chips.
 - **Editing and deleting** are limited to ideas you posted. You can change the name, link and notes but not who it is for.
 - You can't like or comment on ideas you posted for yourself.
+- **Notifications:** the 🔔 at the top counts new likes and comments on ideas you posted, and places where someone tagged you. Tapping one jumps to the idea. Each of the three kinds can be switched off under Settings, per family. They are only shown inside the site (no email or push).
+- **Tagging:** type `@` in a comment or an idea's notes and pick a first name. Nobody is ever told about an idea that is for them, and people without a login can't be tagged.
 
 The "never see what's for you" rule is enforced by the database, not only the page.
 
@@ -61,6 +63,9 @@ create table profiles (
   name text not null,
   email text,            -- null for children, who cannot sign in
   icon text,
+  notify_likes boolean not null default true,
+  notify_comments boolean not null default true,
+  notify_tags boolean not null default true,
   unique (family_id, name)
 );
 create unique index profiles_family_email_key on profiles (family_id, lower(email)) where email is not null;
@@ -131,7 +136,7 @@ grant execute on function set_gift_category(bigint, text) to authenticated;
 
 revoke all on families, profiles, gifts, purchases, votes, comments, comment_likes from anon, authenticated;
 grant select on families, profiles to authenticated;
-grant update (icon) on profiles to authenticated;
+grant update (icon, notify_likes, notify_comments, notify_tags) on profiles to authenticated;
 grant select, insert, delete on gifts, purchases, votes, comments, comment_likes to authenticated;
 grant update (name, link, notes) on gifts to authenticated;
 
@@ -206,6 +211,93 @@ create policy "add comment like" on comment_likes for insert to authenticated
       and not (g.recipient_ids && my_profile_ids())));
 create policy "remove own comment like" on comment_likes for delete to authenticated
   using (liker_id = any(my_profile_ids()));
+
+-- notifications: written only by triggers, readable only by the person they are for
+create table notifications (
+  id bigint generated always as identity primary key,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  actor_id uuid not null references profiles(id) on delete cascade,
+  gift_id bigint not null references gifts(id) on delete cascade,
+  comment_id bigint references comments(id) on delete cascade,
+  kind text not null check (kind in ('like', 'comment', 'tag')),
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+-- one per like, one per person per comment, one per person per tag in an idea's notes
+create unique index notifications_like_key on notifications (profile_id, actor_id, gift_id) where kind = 'like';
+create unique index notifications_comment_key on notifications (profile_id, comment_id) where comment_id is not null;
+create unique index notifications_note_tag_key on notifications (profile_id, gift_id) where kind = 'tag' and comment_id is null;
+
+-- adds one notification, unless the idea is for that person, it was their own action,
+-- they cannot sign in, or they turned that kind off
+create function add_notification(who uuid, actor uuid, gid bigint, cid bigint, what text) returns void
+language sql security definer set search_path = public as $$
+  insert into notifications (profile_id, actor_id, gift_id, comment_id, kind)
+  select p.id, actor, g.id, cid, what
+  from gifts g join profiles p on p.family_id = g.family_id
+  where g.id = gid and p.id = who and p.id <> actor and p.email is not null
+    and not (p.id = any(g.recipient_ids))
+    and case what when 'like' then p.notify_likes when 'comment' then p.notify_comments else p.notify_tags end
+  on conflict do nothing
+$$;
+
+-- the people in a family tagged with @Name in a piece of text
+create function tagged_in(body text, fam uuid) returns setof uuid
+language sql stable security definer set search_path = public as $$
+  select id from profiles
+  where family_id = fam
+    and body ~* ('(^|[^[:alnum:]_])@' || regexp_replace(name, '([^[:alnum:] ])', '\\\1', 'g') || '($|[^[:alnum:]_])')
+$$;
+
+create function notify_on_vote() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'DELETE' then
+    delete from notifications where kind = 'like' and actor_id = old.voter_id and gift_id = old.gift_id;
+  else
+    perform add_notification(g.posted_by, new.voter_id, g.id, null, 'like') from gifts g where g.id = new.gift_id;
+  end if;
+  return null;
+end $$;
+
+create function notify_on_comment() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare g gifts;
+begin
+  select * into g from gifts where id = new.gift_id;
+  -- tags go first, so a poster who is also tagged gets one notification, not two
+  perform add_notification(t, new.author_id, g.id, new.id, 'tag') from tagged_in(new.body, g.family_id) t;
+  perform add_notification(g.posted_by, new.author_id, g.id, new.id, 'comment');
+  return null;
+end $$;
+
+create function notify_on_gift() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' then
+    if new.notes is not distinct from old.notes then return null; end if;
+  end if;
+  perform add_notification(t, new.posted_by, new.id, null, 'tag') from tagged_in(new.notes, new.family_id) t;
+  return null;
+end $$;
+
+-- only the triggers may call these
+revoke all on function add_notification(uuid, uuid, bigint, bigint, text) from public, anon, authenticated;
+revoke all on function tagged_in(text, uuid) from public, anon, authenticated;
+
+create trigger votes_notify after insert or delete on votes for each row execute function notify_on_vote();
+create trigger comments_notify after insert on comments for each row execute function notify_on_comment();
+create trigger gifts_notify after insert or update of notes on gifts for each row execute function notify_on_gift();
+
+revoke all on notifications from anon, authenticated;
+grant select on notifications to authenticated;
+grant update (read_at) on notifications to authenticated;
+alter table notifications enable row level security;
+create policy "see own notifications" on notifications for select to authenticated
+  using (profile_id = any(my_profile_ids())
+    and exists (select 1 from gifts g where g.id = gift_id and not (g.recipient_ids && my_profile_ids())));
+create policy "mark own read" on notifications for update to authenticated
+  using (profile_id = any(my_profile_ids())) with check (profile_id = any(my_profile_ids()));
 ```
 
 </details>
@@ -218,6 +310,8 @@ create policy "remove own comment like" on comment_likes for delete to authentic
 4. Calls the Anthropic Messages API with a forced tool call, `fill_gift_form`, and an enum of the family names for the recipients.
 5. Checks the result before returning it. Recipients must be family names, a link is kept only if it appears in the note, em dashes are replaced and lengths are capped.
 6. Returns `{ recipients, gift, link, notes, extra_ideas, problem }`. The `problem` text is built in code, not by the model.
+
+An `@Name` in the note is kept in the notes (added back in code if the model drops it) and is not treated as a recipient.
 
 ## Categories (`parse-gift`, mode `categorize`)
 
@@ -238,5 +332,6 @@ When a person's tab or the Shared tab opens and some ideas have no category yet,
 ## Ideas for later
 
 - Fetch a product title from a pasted link.
+- Email notifications, for example a daily summary.
 - Custom SMTP in Supabase to lift the email limit.
 - A per-person daily cap on Quick add calls.
