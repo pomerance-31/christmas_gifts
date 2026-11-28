@@ -13,7 +13,7 @@ A small private site where families share Christmas gift ideas for each other. E
 - **Categories:** on a person's tab and the Shared tab, a sidebar lists AI generated categories for that list (Books, Clothing and so on) with counts, and clicking one filters the list. On a phone it becomes a row of chips.
 - **Editing and deleting** are limited to ideas you posted. You can change the name, link and notes but not who it is for.
 - You can't like or comment on ideas you posted for yourself.
-- **Notifications:** the 🔔 at the top counts new likes and comments on ideas you posted, and places where someone tagged you. Tapping one jumps to the idea. Each of the three kinds can be switched off under Settings, per family. They are only shown inside the site (no email or push).
+- **Notifications:** the 🔔 at the top counts new likes and comments on ideas you posted, and places where someone tagged you. It opens a popup, and tapping a line jumps to the idea. Each of the three kinds can be switched off on the Settings page (⚙️), per family. They are only shown inside the site (no email or push).
 - **Tagging:** type `@` in a comment or an idea's notes and pick a first name. Nobody is ever told about an idea that is for them, and people without a login can't be tagged.
 
 The "never see what's for you" rule is enforced by the database, not only the page.
