@@ -150,6 +150,25 @@ button:disabled{opacity:.6;cursor:default}
 .editbtns button{padding:6px 14px}
 .editbtns button.ghost{color:var(--dark);border-color:#cdb98a}
 @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+.topbtns{display:flex;gap:8px;align-items:center;margin-left:auto}
+#bell{position:relative;padding:8px 12px}
+.badge{position:absolute;top:-8px;right:-8px;min-width:22px;padding:0 6px;border-radius:999px;background:var(--red);color:#fff;border:2px solid #fff;font-size:.75rem;line-height:18px}
+#notif{margin-bottom:16px}
+.nhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.nhead h3{color:var(--green);font-size:1.5rem}
+.link{background:transparent;color:var(--red);border:0;padding:0;font-size:.85rem;font-weight:700;text-decoration:underline}
+.link:hover{background:transparent;color:#d02a36}
+.nlist{max-height:340px;overflow-y:auto;margin:8px 0}
+.n{display:block;width:100%;text-align:left;background:transparent;color:var(--dark);border:0;border-bottom:1px solid #e6d9b8;border-radius:0;padding:8px;font-size:.9rem;font-weight:400;overflow-wrap:anywhere}
+.n:hover{background:#f3ead2}
+.n.unread{background:#fff1c9;border-left:4px solid var(--red)}
+.n small{display:block;opacity:.65}
+.nset label{display:flex;align-items:center;gap:8px;font-weight:600;margin:8px 0 0;cursor:pointer}
+.nset input{width:18px;height:18px;flex:none;accent-color:var(--green)}
+.tag{font-weight:700;color:var(--green)}
+#atbox{position:absolute;z-index:10;display:flex;flex-direction:column;min-width:160px;max-height:220px;overflow-y:auto;padding:4px;background:#fff;border:2px solid var(--gold);border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+#atbox button{background:transparent;color:var(--dark);text-align:left;padding:6px 10px;border-radius:6px;font-size:.95rem;font-weight:600}
+#atbox button.sel,#atbox button:hover{background:#f3ead2}
 </style>
 </head>
 <body>
@@ -195,9 +214,14 @@ button:disabled{opacity:.6;cursor:default}
   </div>
   <div class="top">
     <h1><span id="myicon">🎅</span> <span id="hi"></span>'s Gift Ideas</h1>
-    <button class="ghost" id="logout">Log out</button>
+    <div class="topbtns">
+      <button type="button" class="ghost hidden" id="bell" aria-label="Notifications" aria-expanded="false">🔔<span class="badge hidden" id="bellcount"></span></button>
+      <button class="ghost" id="logout">Log out</button>
+    </div>
   </div>
   <div class="stripe"></div>
+
+  <div class="card hidden" id="notif"></div>
 
   <div class="tabs" id="tabs"></div>
 
@@ -217,7 +241,7 @@ button:disabled{opacity:.6;cursor:default}
       <div class="full"><label>Who is it for? (tick one or more)</label><div class="forchips" id="forChips"></div></div>
       <div class="full"><label for="name">Gift</label><input id="name" required maxlength="120" placeholder="e.g., a Rolex"></div>
       <div class="full"><label for="link">Link (optional)</label><input id="link" type="url" placeholder="https://"></div>
-      <div class="full"><label for="notes">Notes (optional)</label><textarea id="notes" rows="2" maxlength="1000" placeholder="Size, color, etc."></textarea></div>
+      <div class="full"><label for="notes">Notes (optional)</label><textarea id="notes" rows="2" maxlength="1000" placeholder="Size, color, etc. Type @ to tag someone."></textarea></div>
       <div class="full hint" id="hint"></div>
       <div class="full"><button type="submit">Add idea ⭐</button></div>
     </form>
@@ -269,7 +293,8 @@ if(SUPABASE_URL.startsWith('PASTE')){
 }
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let me = null, allProfiles = [], families = [], famId = null, myEmail = '', profiles = [], gifts = [], buys = [], votes = [], comments = [], commentLikes = [], pick = ICONS[0];
+let me = null, allProfiles = [], families = [], famId = null, myEmail = '', profiles = [], gifts = [], buys = [], votes = [], comments = [], commentLikes = [], notifs = [], notifsOn = false, pick = ICONS[0];
+let notifOpen = false, settingsOpen = false;
 const openThreads = new Set(), drafts = {};
 let passwordPending = LINK_TYPE === 'recovery';
 
@@ -314,7 +339,7 @@ async function loadData(){
   if(!mem.some(m => m.family_id === famId)) famId = (mem.find(m => m.family_id === savedFam()) || mem[0] || {}).family_id || null;
   me = mem.find(m => m.family_id === famId) || null;
   profiles = allProfiles.filter(x => x.family_id === famId);
-  if(!me){ gifts = []; buys = []; votes = []; comments = []; commentLikes = []; return; }
+  if(!me){ gifts = []; buys = []; votes = []; comments = []; commentLikes = []; notifs = []; notifsOn = false; return; }
   const [g, b, v, c, l] = await Promise.all([
     sb.from('gifts').select('*').eq('family_id', famId).order('created_at'),
     sb.from('purchases').select('*'),
@@ -324,6 +349,12 @@ async function loadData(){
   ]);
   gifts = g.data || []; buys = b.data || [];
   votes = v.data || []; comments = c.data || []; commentLikes = l.data || [];
+  await loadNotifs();
+}
+// the bell stays hidden if the notifications table is not set up
+async function loadNotifs(){
+  const r = await sb.from('notifications').select('*').eq('profile_id', me.id).order('created_at', { ascending: false }).limit(50);
+  notifsOn = !r.error; notifs = r.data || [];
 }
 async function refresh(){ await loadData(); renderHint(); renderLists(); }
 
@@ -341,7 +372,7 @@ if(LINK.get('error')) msg('loginMsg', 'That link has expired or was already used
 
 sb.auth.onAuthStateChange((event, session) => {
   if(event === 'PASSWORD_RECOVERY') passwordPending = true;
-  if(event === 'SIGNED_OUT' || !session){ me = null; show('loginScreen'); return; }
+  if(event === 'SIGNED_OUT' || !session){ me = null; notifOpen = settingsOpen = false; closeAt(); show('loginScreen'); return; }
   setTimeout(() => route(session), 0); // outside the callback so Supabase calls do not deadlock
 });
 
@@ -382,6 +413,7 @@ $('famSel').onchange = async () => {
   famId = $('famSel').value;
   try{ localStorage.setItem('giftFamily', famId); localStorage.setItem('giftView', 'all'); }catch(_){}
   view = 'all'; postedBy = 'all'; catFilter = 'all'; editing = null; openThreads.clear();
+  notifOpen = settingsOpen = false;
   await loadData();
   enterApp();
 };
@@ -533,14 +565,14 @@ function giftHTML(g, shopping){
   if(editing === g.id) return editHTML(g);
   const b = shopping ? buyOf(g.id) : null;
   const locked = b && b.buyer_id !== me.id;
-  return `<div class="gift ${b ? 'done' : ''}">
+  return `<div class="gift ${b ? 'done' : ''}" data-gift="${g.id}">
     ${shopping ? '' : '<span>🎁</span>'}
     <div class="grow">
       <div class="toprow"><div class="name">${esc(g.name)}</div>${shopping ? buyHTML(g, b, locked) : ''}</div>
       ${shopping ? `<div class="metarow">${postedHTML(g)}${actionsHTML(g)}</div>` : ''}
       ${isShared(g) ? `<div class="forline">👥 For ${esc(forNames(g))}</div>` : ''}
       ${safeLink(g.link) ? `<a href="${esc(g.link)}" target="_blank" rel="noopener">View link</a>` : ''}
-      ${g.notes ? `<div class="notes">${esc(g.notes)}</div>` : ''}
+      ${g.notes ? `<div class="notes">${rich(g.notes)}</div>` : ''}
       ${shopping ? threadHTML(g) : ''}
     </div>
     ${g.posted_by === me.id ? `<button class="x" data-edit="${g.id}" title="Edit this idea">✎</button><button class="x" data-del="${g.id}" title="Remove this idea">✕</button>` : ''}
@@ -573,8 +605,8 @@ function threadHTML(g){
   if(!openThreads.has(g.id)) return '';
   const cs = comments.filter(c => c.gift_id === g.id);
   return `<div class="thread">` +
-    cs.map(c => `<div class="cm"><b>${c.author_id === me.id ? 'You' : esc(nameOf(c.author_id))}:</b> ${esc(c.body)}<span class="when">${fmt(c.created_at)}</span> ${likeChip(c)}${c.author_id === me.id ? ` <button type="button" class="cx" data-delc="${c.id}" title="Delete comment">✕</button>` : ''}</div>`).join('') +
-    `<div class="cmform"><input data-draft="${g.id}" maxlength="500" placeholder="Add a comment" value="${esc(drafts[g.id] || '')}"><button type="button" data-post="${g.id}">Post</button></div></div>`;
+    cs.map(c => `<div class="cm"><b>${c.author_id === me.id ? 'You' : esc(nameOf(c.author_id))}:</b> ${rich(c.body)}<span class="when">${fmt(c.created_at)}</span> ${likeChip(c)}${c.author_id === me.id ? ` <button type="button" class="cx" data-delc="${c.id}" title="Delete comment">✕</button>` : ''}</div>`).join('') +
+    `<div class="cmform"><input data-draft="${g.id}" maxlength="500" placeholder="Add a comment (@ to tag)" value="${esc(drafts[g.id] || '')}"><button type="button" data-post="${g.id}">Post</button></div></div>`;
 }
 
 async function refreshSocial(){
@@ -701,7 +733,9 @@ $('others').addEventListener('click', e => {
 });
 
 function renderLists(){
+  closeAt();
   renderTabs();
+  renderBell();
   const showMine = view === 'all' || view === me.id;
   const showOthers = view !== me.id;
   $('mineTitle').classList.toggle('hidden', !showMine);
@@ -848,6 +882,164 @@ $('others').addEventListener('click', async e => {
     await refreshSocial();
   }
 });
+
+// highlight @Name for people in this family
+function rich(text){
+  const names = profiles.map(p => p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  if(!names) return esc(text);
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}_])@(${names})(?![\\p{L}\\p{N}_])`, 'giu');
+  return esc(text).replace(re, '$1<span class="tag">@$2</span>');
+}
+
+// notifications: the database creates them, this only shows them
+function noteHTML(n){
+  const g = gifts.find(x => x.id === n.gift_id);
+  if(!g) return '';
+  const who = `<b>${esc(nameOf(n.actor_id))}</b>`;
+  const idea = `<b>${esc(g.name)}</b> (for ${esc(forNames(g))})`;
+  const c = n.comment_id ? comments.find(x => x.id === n.comment_id) : null;
+  const text = n.kind === 'like' ? `👍 ${who} liked your idea ${idea}`
+    : n.kind === 'comment' ? `💬 ${who} commented on your idea ${idea}`
+    : `🏷️ ${who} tagged you ${n.comment_id ? 'in a comment on' : 'in'} ${idea}`;
+  const quote = c ? `: "${esc(c.body.length > 90 ? c.body.slice(0, 90) + '...' : c.body)}"` : '';
+  return `<button type="button" class="n ${n.read_at ? '' : 'unread'}" data-note="${n.id}">${text}${quote}<small>${fmt(n.created_at)}</small></button>`;
+}
+
+const SETTINGS = [['notify_likes', 'Someone likes my idea'], ['notify_comments', 'Someone comments on my idea'], ['notify_tags', 'Someone tags me with @']];
+
+function renderBell(){
+  $('bell').classList.toggle('hidden', !notifsOn);
+  const shown = notifs.filter(n => gifts.some(g => g.id === n.gift_id));
+  const unread = shown.filter(n => !n.read_at).length;
+  $('bellcount').textContent = unread > 9 ? '9+' : unread;
+  $('bellcount').classList.toggle('hidden', !unread);
+  $('bell').setAttribute('aria-expanded', notifOpen);
+  const el = $('notif');
+  el.classList.toggle('hidden', !notifOpen || !notifsOn);
+  if(!notifOpen || !notifsOn){ el.innerHTML = ''; return; }
+  const fam = families.find(f => f.id === famId);
+  el.innerHTML = `<div class="nhead"><h3>🔔 Notifications</h3>${unread ? '<button type="button" class="link" data-readall="1">Mark all read</button>' : ''}</div>`
+    + `<div class="nlist">${shown.map(noteHTML).join('') || '<span class="empty">Nothing yet.</span>'}</div>`
+    + `<button type="button" class="link" data-settings="1">⚙️ Settings ${settingsOpen ? '▾' : '▸'}</button>`
+    + (settingsOpen ? `<div class="nset"><div class="catsub">Tell me when${memberships().length > 1 && fam ? ` (${esc(fam.name)} family)` : ''}:</div>`
+      + SETTINGS.map(([k, label]) => `<label><input type="checkbox" data-set="${k}" ${me[k] ? 'checked' : ''}> ${label}</label>`).join('') + '</div>' : '');
+}
+
+$('bell').onclick = async () => {
+  notifOpen = !notifOpen;
+  renderBell();
+  if(!notifOpen) return;
+  await loadData();
+  if(editing === null) renderLists(); else renderBell(); // do not wipe an edit in progress
+};
+
+// jump to the idea a notification is about
+function openNote(n){
+  const g = gifts.find(x => x.id === n.gift_id);
+  if(!g) return;
+  view = isShared(g) ? 'shared' : g.recipient_ids[0];
+  postedBy = 'all'; catFilter = 'all'; editing = null; notifOpen = false;
+  try{ localStorage.setItem('giftView', view); }catch(_){}
+  if(n.comment_id) openThreads.add(g.id);
+  renderLists();
+  const row = $('others').querySelector(`[data-gift="${g.id}"]`);
+  if(row){ row.scrollIntoView({ block: 'center' }); glow(row); }
+}
+
+$('notif').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  if(b.dataset.settings){ settingsOpen = !settingsOpen; renderBell(); return; }
+  const now = new Date().toISOString();
+  if(b.dataset.readall){
+    notifs.forEach(n => { n.read_at = n.read_at || now; });
+    renderBell();
+    const r = await sb.from('notifications').update({ read_at: now }).eq('profile_id', me.id).is('read_at', null);
+    if(r.error) alert(r.error.message);
+  }else if(b.dataset.note){
+    const n = notifs.find(x => x.id === Number(b.dataset.note));
+    if(!n) return;
+    const wasUnread = !n.read_at;
+    n.read_at = n.read_at || now;
+    openNote(n);
+    if(wasUnread) await sb.from('notifications').update({ read_at: now }).eq('id', n.id);
+  }
+});
+
+$('notif').addEventListener('change', async e => {
+  const box = e.target.closest('input[data-set]');
+  if(!box) return;
+  const key = box.dataset.set;
+  box.disabled = true;
+  const r = await sb.from('profiles').update({ [key]: box.checked }).eq('id', me.id).select();
+  if(r.error || !r.data || !r.data.length) alert('Could not save that setting, please try again.');
+  else me[key] = box.checked;
+  renderBell();
+});
+
+// @ tagging: type @ in a comment or a note to pick a first name
+let at = null; // { field, start, names, sel }
+
+// who can be tagged: people who can sign in, apart from you and whoever the idea is for
+function taggable(field){
+  let forIds = [];
+  if(field.dataset.draft) forIds = (gifts.find(g => g.id === Number(field.dataset.draft)) || {}).recipient_ids || [];
+  else if(field.dataset.e === 'notes') forIds = (gifts.find(g => g.id === editing) || {}).recipient_ids || [];
+  else if(field.id === 'notes') forIds = [...chosen];
+  return profiles.filter(p => p.email && p.id !== me.id && !forIds.includes(p.id)).map(p => p.name);
+}
+const tagField = el => !!el && !!el.matches && el.matches('input[data-draft], textarea[data-e="notes"], #notes, #quick');
+
+function closeAt(){
+  const box = $('atbox');
+  if(box) box.remove();
+  at = null;
+}
+function drawAt(){
+  let box = $('atbox');
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'atbox';
+    box.onmousedown = e => e.preventDefault(); // keep the cursor in the field
+    box.onclick = e => { const b = e.target.closest('button'); if(b) pickAt(Number(b.dataset.i)); };
+    document.body.appendChild(box);
+  }
+  box.innerHTML = at.names.map((n, i) => `<button type="button" data-i="${i}" class="${i === at.sel ? 'sel' : ''}">@${esc(n)}</button>`).join('');
+  const r = at.field.getBoundingClientRect();
+  box.style.top = (r.bottom + window.scrollY + 4) + 'px';
+  box.style.left = (r.left + window.scrollX) + 'px';
+}
+function pickAt(i){
+  const { field, start, names } = at;
+  const head = field.value.slice(0, start) + '@' + names[i] + ' ';
+  field.value = head + field.value.slice(field.selectionStart).replace(/^ /, '');
+  closeAt();
+  field.focus();
+  field.setSelectionRange(head.length, head.length);
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+document.addEventListener('input', e => {
+  const f = e.target;
+  if(!tagField(f)) return;
+  const m = f.value.slice(0, f.selectionStart).match(/(^|[^\p{L}\p{N}_])@(\p{L}*)$/u);
+  const names = m ? taggable(f).filter(n => n.toLowerCase().startsWith(m[2].toLowerCase())) : [];
+  if(!names.length){ closeAt(); return; }
+  at = { field: f, start: f.selectionStart - m[2].length - 1, names, sel: 0 };
+  drawAt();
+});
+// runs before the field's own Enter handling, so picking a name does not post the comment
+document.addEventListener('keydown', e => {
+  if(!at || e.target !== at.field) return;
+  if(e.key === 'Escape') closeAt();
+  else if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    at.sel = (at.sel + (e.key === 'ArrowDown' ? 1 : at.names.length - 1)) % at.names.length;
+    drawAt();
+  }else if(e.key === 'Enter' || e.key === 'Tab') pickAt(at.sel);
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+document.addEventListener('focusout', e => { if(at && e.target === at.field) closeAt(); });
 
 // pick up new ideas when someone returns to the tab
 document.addEventListener('visibilitychange', () => {

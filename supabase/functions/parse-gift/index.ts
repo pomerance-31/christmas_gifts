@@ -21,13 +21,13 @@ const SYSTEM = `You fill in a form for a family Christmas gift ideas website. A 
 
 You are given the current user, the family list, and the note.
 
-recipients: The family members the gift is for, as a list. Choose only from the family list. Match nicknames, short forms, misspellings and any capitalization (for example "alex" matches Alexander). If the note says the gift is for the current user (for example "me", "myself", "I want", "I'd like", "my list"), include the current user's name. A note can name several people ("for casey and riley", "me and alex"); include each one once. Return an empty list if the note does not say who it is for, or if any person it names is not on the list. Do not guess from words like "mom", "dad" or "my brother", and do not turn "everyone", "the kids" or "the family" into names.
+recipients: The family members the gift is for, as a list. Choose only from the family list. Match nicknames, short forms, misspellings and any capitalization (for example "alex" matches Alexander). If the note says the gift is for the current user (for example "me", "myself", "I want", "I'd like", "my list"), include the current user's name. A note can name several people ("for casey and riley", "me and alex"); include each one once. Return an empty list if the note does not say who it is for, or if any person it names is not on the list. A name written with @ in front (like @Riley) is a tag that sends that person a notification, so do not count it as a recipient unless the note clearly says the gift is for them. Do not guess from words like "mom", "dad" or "my brother", and do not turn "everyone", "the kids" or "the family" into names.
 
 gift: A short label for the item, 2 to 5 words, naming what it is rather than describing it. Lead with the thing (or the topic, for a book), not the occasion, the person or the reasons. Drop all framing like "a good gift for X could be", "I think", "maybe", "get her". Keep a brand or model if stated. Leave size, color and price out; they belong in notes. If the note is only a link and the item is obvious from readable words in the link, use that; otherwise return an empty string. Never invent an item.
 
 link: A web address that appears in the note, copied exactly. If it starts with www., add https:// in front. If the note has no web address, return an empty string. Never make up or guess a link. If there are several, use the first one that looks like a product page.
 
-notes: The rest of the note, kept close to the writer's own words. Keep the details, reasons, preferences, caveats and personality (for example "not a must, just an idea", "I suspect hard to find", "has been really into..."). Cut only what the gift field already says and pure filler like "I think a great idea for X is". Write short natural sentences in the writer's voice, fixing obvious typos but not rephrasing into formal language. If the note is short, the notes can be short. Leave out the names of the people it is for, since the form already records them. Never add details, suggestions or reasons that the note does not contain. Stay under 900 characters. Return an empty string only if the note has nothing beyond the item itself.
+notes: The rest of the note, kept close to the writer's own words. Keep the details, reasons, preferences, caveats and personality (for example "not a must, just an idea", "I suspect hard to find", "has been really into..."). Cut only what the gift field already says and pure filler like "I think a great idea for X is". Write short natural sentences in the writer's voice, fixing obvious typos but not rephrasing into formal language. If the note is short, the notes can be short. Leave out the names of the people it is for, since the form already records them, but always keep every @ tag exactly as written. Never add details, suggestions or reasons that the note does not contain. Stay under 900 characters. Return an empty string only if the note has nothing beyond the item itself.
 
 extra_ideas: How many other separate gift ideas the note contains besides the one you filled in. Use 0 when there is only one. Fill in the first idea only.
 
@@ -64,6 +64,9 @@ Result: recipients [Taylor, Alexander]; gift "Set of mugs"; link ""; notes "Some
 
 Note: my mom would like a book about birds
 Result: recipients []; gift "Book about birds"; link ""; notes ""; extra_ideas 0
+
+Note: wool socks for morgan, @riley do you know the size?
+Result: recipients [Morgan]; gift "Wool socks"; link ""; notes "@Riley do you know the size?"; extra_ideas 0
 
 Note: casey: slippers. also a sweater for riley
 Result: recipients [Casey]; gift "Slippers"; link ""; notes ""; extra_ideas 1`;
@@ -275,7 +278,12 @@ Deno.serve(async (req) => {
     ),
   ].slice(0, names.length);
   const gift = clean(raw.gift, 120);
-  const notes = clean(raw.notes, 1000);
+  let notes = clean(raw.notes, 1000);
+
+  // If the model dropped an @ tag, put it back so that person still gets told
+  const tagged = (t: string, n: string) => t.toLowerCase().split(/[^\p{L}\p{N}_@]+/u).includes('@' + n.toLowerCase());
+  const dropped = names.filter((n) => tagged(text, n) && !tagged(notes, n) && !recipients.includes(n));
+  if (dropped.length) notes = `${notes} ${dropped.map((n) => '@' + n).join(' ')}`.trim().slice(0, 1000);
 
   // A link is only kept if it really appears in the note, so one can never be invented
   let link = clean(raw.link, 500);
